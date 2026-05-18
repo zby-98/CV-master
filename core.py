@@ -17,9 +17,49 @@ import yaml
 from openai import OpenAI
 
 # ─── 路径常量 ───────────────────────────────────────────────────
-PROJECT_DIR = Path(__file__).resolve().parent
-DATA_DIR = PROJECT_DIR / "data"
-DEFAULT_PROMPT = PROJECT_DIR / "prompts" / "system_prompt.md"
+
+def _is_frozen() -> bool:
+    return getattr(sys, 'frozen', False)
+
+
+def _get_resource_dir() -> Path:
+    """只读资源目录（模板、字体、提示词、.env.yaml.example）。
+    开发模式指向项目根目录，PyInstaller 打包后指向临时解压目录。"""
+    if _is_frozen():
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent
+
+
+def _get_user_data_dir() -> Path:
+    """可写用户数据目录（配置、数据库、输出文件）。
+    开发模式使用项目目录下的 data/，打包后使用系统应用数据目录。"""
+    if _is_frozen():
+        if sys.platform == 'darwin':
+            base = Path.home() / 'Library' / 'Application Support' / 'CV-Assistant'
+        elif sys.platform == 'win32':
+            base = Path(os.environ.get('APPDATA', str(Path.home()))) / 'CV-Assistant'
+        else:
+            base = Path.home() / '.local' / 'share' / 'CV-Assistant'
+    else:
+        base = Path(__file__).resolve().parent
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _get_typst_cmd() -> str:
+    """返回 typst 命令。打包后使用捆绑的二进制，开发模式使用系统 PATH 中的。"""
+    if _is_frozen():
+        exe = 'typst.exe' if sys.platform == 'win32' else 'typst'
+        bundled = Path(sys._MEIPASS) / exe
+        if bundled.exists():
+            return str(bundled)
+    return 'typst'
+
+
+RESOURCE_DIR = _get_resource_dir()
+USER_DATA_DIR = _get_user_data_dir()
+DATA_DIR = USER_DATA_DIR / "data"
+DEFAULT_PROMPT = RESOURCE_DIR / "prompts" / "system_prompt.md"
 
 DEFAULT_MODEL = os.environ.get("CV_MODEL", "deepseek-chat")
 DEFAULT_API_KEY = os.environ.get("CV_API_KEY", "")
@@ -104,7 +144,7 @@ def load_config() -> dict:
         "base_url": DEFAULT_BASE_URL,
         "model": DEFAULT_MODEL,
     }
-    config_file = PROJECT_DIR / ".env.yaml"
+    config_file = USER_DATA_DIR / ".env.yaml"
     if config_file.exists():
         with open(config_file) as f:
             env_data = yaml.safe_load(f) or {}
@@ -113,7 +153,7 @@ def load_config() -> dict:
 
 
 def save_config(api_key: str, base_url: str, model: str) -> None:
-    config_file = PROJECT_DIR / ".env.yaml"
+    config_file = USER_DATA_DIR / ".env.yaml"
     data = {"api_key": api_key, "base_url": base_url, "model": model}
     with open(config_file, "w") as f:
         yaml.dump(data, f, allow_unicode=True)
@@ -349,12 +389,12 @@ class TypstCompiler:
 
         typst_path.write_text(typst_code, encoding="utf-8")
 
-        if not _check_command("typst"):
+        typst_cmd = _get_typst_cmd()
+        if not _check_command(typst_cmd):
             return pdf_path, False, "Typst CLI 未安装。请运行: brew install typst"
 
-        # Project-local fonts directory
-        fonts_dir = Path(__file__).resolve().parent / "fonts"
-        cmd = ["typst", "compile"]
+        fonts_dir = RESOURCE_DIR / "fonts"
+        cmd = [typst_cmd, "compile"]
         if fonts_dir.is_dir():
             cmd += ["--font-path", str(fonts_dir)]
         cmd += [str(typst_path), str(pdf_path)]

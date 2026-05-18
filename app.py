@@ -15,14 +15,16 @@ from core import (
     load_config, save_config,
     ResumeDatabase, AIClient, TypstCompiler,
     import_resume, chat_extract_yaml, CHAT_SYSTEM_PROMPT,
-    list_users, create_user, delete_user,
+    list_users, create_user, delete_user, get_user_dir,
     load_chat_history, save_chat_history,
     save_jd, list_jds, get_jd,
     list_outputs, _ensure_typst_import, _patch_typst_metadata,
     INTERVIEW_PREP_PROMPT, _clean_code_fence,
+    RESOURCE_DIR,
 )
 
-app = Flask(__name__)
+# 打包后模板路径需要显式指定
+app = Flask(__name__, template_folder=str(RESOURCE_DIR / "templates"))
 app.secret_key = os.urandom(24).hex()
 
 # 开发模式：禁用浏览器缓存，确保每次刷新拿到最新代码
@@ -66,8 +68,7 @@ def api_switch_user():
     name = data.get("name", "").strip()
     if not name:
         return jsonify({"ok": False, "message": "用户名不能为空"})
-    # 如果用户目录不存在则自动创建
-    user_dir = Path(__file__).resolve().parent / "data" / name
+    user_dir = get_user_dir(name)
     if not user_dir.exists():
         create_user(name)
     flask_session["current_user"] = name
@@ -328,7 +329,7 @@ def api_tailor():
         return jsonify({"ok": False, "message": "简历数据库不存在，请先上传或对话录入"})
     db.load()
 
-    prompt_path = Path(__file__).resolve().parent / "prompts" / "system_prompt.md"
+    prompt_path = RESOURCE_DIR / "prompts" / "system_prompt.md"
     if prompt_path.exists():
         prompt_template = prompt_path.read_text(encoding="utf-8")
     else:
