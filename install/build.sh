@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
-# 构建 macOS .app 和 Windows .exe 分发包
+# 构建 macOS .app/.dmg 和 Windows .exe 分发包
 # 用法: ./install/build.sh [mac|win|all]
 set -e
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$DIR/build"
 DIST_DIR="$DIR/dist"
+VENV_DIR="$BUILD_DIR/venv"
 
-TYPST_VER="0.12.0"
+TYPST_VER="0.14.0"
+
+# ─── 准备干净 Python 虚拟环境 ──────────────────
+
+setup_venv() {
+  if [ ! -f "$VENV_DIR/bin/python" ]; then
+    echo "→ 创建干净虚拟环境..."
+    python3 -m venv "$VENV_DIR"
+  fi
+  echo "→ 安装依赖..."
+  "$VENV_DIR/bin/pip" install -q flask openai pyyaml python-docx pyinstaller
+  PYINSTALLER="$VENV_DIR/bin/pyinstaller"
+}
 
 # ─── 下载 Typst 二进制 ──────────────────────────
 
@@ -16,7 +29,7 @@ download_typst_mac() {
   if [ -f "$dest/typst" ]; then echo "  ✓ typst 已存在"; return; fi
   echo "  → 下载 typst macOS arm64..."
   local url="https://github.com/typst/typst/releases/download/v${TYPST_VER}/typst-aarch64-apple-darwin.tar.xz"
-  curl -sL "$url" | tar xJ -C "$dest" typst-aarch64-apple-darwin/typst --strip-components=1
+  curl -sL "$url" | tar xJ -C "$dest" --strip-components=1 "typst-aarch64-apple-darwin/typst"
   chmod +x "$dest/typst"
   echo "  ✓ typst 已准备"
 }
@@ -32,13 +45,6 @@ download_typst_win() {
   echo "  ✓ typst 已准备"
 }
 
-# ─── 检查 PyInstaller ───────────────────────────
-
-if ! python3 -c "import PyInstaller" 2>/dev/null; then
-  echo "→ 安装 PyInstaller..."
-  pip3 install pyinstaller
-fi
-
 # ─── 构建 macOS ──────────────────────────────────
 
 build_mac() {
@@ -46,10 +52,10 @@ build_mac() {
   echo "===== 构建 macOS .app ====="
   mkdir -p "$BUILD_DIR/mac"
   download_typst_mac "$BUILD_DIR/mac"
+  setup_venv
 
-  # PyInstaller 构建
   cd "$DIR"
-  pyinstaller \
+  "$PYINSTALLER" \
     --name "CV-Assistant" \
     --windowed \
     --noconfirm \
@@ -87,7 +93,6 @@ build_win() {
   echo ""
   echo "===== 构建 Windows .exe（交叉编译）====="
   echo "  注意：Windows 打包需要在 Windows 或 wine 环境下运行"
-  echo "  在 Windows 上运行: pyinstaller --name CV-Assistant ..."
   echo ""
   echo "  Windows 构建命令（在 Windows 终端执行）："
   echo ""
