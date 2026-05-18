@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Resume Tailoring Agent</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --card: #fff;
+    --border: #e2e8f0;
+    --text: #1a202c;
+    --text-muted: #718096;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --success: #059669;
+    --danger: #dc2626;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 280px; min-width: 280px; background: var(--card); border-right: 1px solid var(--border);
+    padding: 20px; display: flex; flex-direction: column; gap: 12px;
+    overflow-y: auto; max-height: 100vh;
+  }
+  .sidebar h1 { font-size: 18px; font-weight: 700; }
+  .sidebar .subtitle { font-size: 12px; color: var(--text-muted); margin-top: -12px; }
+  .section {
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 10px;
+  }
+  .section h3 { font-size: 12px; margin-bottom: 6px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+  .section label { font-size: 11px; color: var(--text-muted); display: block; margin-top: 6px; margin-bottom: 2px; }
+  .section input, .section select {
+    width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px;
+    font-size: 13px; font-family: inherit;
+  }
+  .section input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,.15); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 7px 14px; border-radius: 5px; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none; transition: all .15s;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-outline { background: #fff; border: 1px solid var(--border); }
+  .btn-outline:hover { background: #f8fafc; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-block { width: 100%; margin-top: 4px; }
+  .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
+  .status-dot.on { background: var(--success); }
+  .status-dot.off { background: var(--danger); }
+  .flex { display: flex; gap: 6px; }
+
+  /* Main */
+  .main {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    padding: 20px 20px 20px 0;
+  }
+  .tabs { display: flex; gap: 2px; margin-bottom: 0; }
+  .tab {
+    padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer;
+    background: #e8ecf1; border-radius: var(--radius) var(--radius) 0 0;
+    border: 1px solid var(--border); border-bottom: none; color: var(--text-muted);
+    transition: all .15s;
+  }
+  .tab.active { background: var(--card); color: var(--text); border-color: var(--border); }
+  .tab:hover:not(.active) { background: #dfe3e8; }
+
+  .panel {
+    flex: 1; background: var(--card); border-radius: 0 var(--radius) var(--radius) var(--radius);
+    border: 1px solid var(--border); padding: 24px; overflow-y: auto; display: none;
+  }
+  .panel.active { display: flex; flex-direction: column; }
+
+  /* Panel contents */
+  .panel h2 { font-size: 20px; margin-bottom: 16px; }
+  textarea {
+    width: 100%; min-height: 240px; padding: 12px; border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 14px; font-family: inherit; line-height: 1.6;
+    resize: vertical; flex: 1;
+  }
+  textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,.15); }
+
+  .chat-box {
+    flex: 1; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; overflow-y: auto; margin-bottom: 12px; min-height: 300px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .chat-msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+  .chat-msg.user { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 3px; }
+  .chat-msg.ai { align-self: flex-start; background: #f1f5f9; border-bottom-left-radius: 3px; }
+  .chat-input-row { display: flex; gap: 8px; }
+  .chat-input-row input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 20px; font-size: 14px; }
+  .chat-input-row input:focus { outline: none; border-color: var(--primary); }
+
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius); padding: 60px;
+    text-align: center; cursor: pointer; transition: all .15s; color: var(--text-muted);
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--primary); background: #f0f4ff; }
+  .upload-zone .icon { font-size: 48px; margin-bottom: 12px; }
+
+  .progress-bar {
+    width: 100%; height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-top: 8px;
+  }
+  .progress-bar .fill {
+    height: 100%; background: var(--primary); border-radius: 2px;
+    animation: progress-indeterminate 1.5s ease-in-out infinite;
+  }
+  @keyframes progress-indeterminate {
+    0% { width: 0%; margin-left: 0; }
+    50% { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+  .timer { font-variant-numeric: tabular-nums; font-family: "SF Mono", Menlo, monospace; }
+
+  .result-box {
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+    background: #f8fafc; margin-top: 12px; display: none;
+  }
+
+  .toast {
+    position: fixed; top: 20px; right: 20px; padding: 12px 20px;
+    border-radius: var(--radius); font-size: 14px; color: #fff; z-index: 999;
+    animation: fadein .3s ease;
+  }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--danger); }
+  @keyframes fadein { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .tag.ok { background: #dcfce7; color: #166534; }
+  .tag.warn { background: #fef9c3; color: #854d0e; }
+  .tag.err { background: #fee2e2; color: #991b1b; }
+
+  /* Typst editor */
+  .typst-editor {
+    width: 100%; min-height: 320px; padding: 14px; border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 12px; line-height: 1.5;
+    font-family: "SF Mono", Menlo, Monaco, monospace;
+    background: #1e293b; color: #e2e8f0; resize: none; flex: 1;
+  }
+  .typst-editor:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,.15); }
+
+  /* Split layout */
+  .editor-preview-split { display: flex; gap: 12px; flex: 1; min-height: 400px; }
+  .editor-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .preview-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #fff; }
+  .preview-pane iframe { flex: 1; border: none; width: 100%; height: 100%; }
+  .preview-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px; }
+  .compile-error { display: none; margin-top: 8px; padding: 10px 14px; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius); font-size: 11px; font-family: "SF Mono", Menlo, monospace; color: #991b1b; white-space: pre-wrap; max-height: 120px; overflow-y: auto; }
+  .result-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .result-toolbar select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; max-width: 200px; }
+  .compile-status { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+  .compile-status .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Interview prep */
+  .iv-section { margin-bottom: 20px; }
+  .iv-section h3 { font-size: 15px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid var(--primary); }
+  .gap-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 8px; }
+  .gap-card.strong { border-left: 3px solid #059669; }
+  .gap-card.partial { border-left: 3px solid #d97706; }
+  .gap-card.missing { border-left: 3px solid #dc2626; }
+  .gap-card .gap-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .gap-card .gap-title { font-weight: 600; font-size: 13px; }
+  .gap-card .gap-body { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+  .qa-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 8px; }
+  .qa-card .qa-q { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .qa-card .qa-cat { font-size: 10px; color: var(--primary); margin-bottom: 6px; }
+  .qa-card .qa-why { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .qa-card .qa-tip { font-size: 12px; background: #fef9c3; padding: 6px 10px; border-radius: 4px; line-height: 1.5; }
+  .intro-card { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius); padding: 14px 18px; }
+  .intro-card .intro-label { font-size: 11px; color: #166534; margin-bottom: 4px; }
+  .intro-card .intro-text { font-size: 14px; line-height: 1.8; color: #1a202c; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <h1>🎯 CV Tailor</h1>
+  <p class="subtitle">AI 简历定制 Agent</p>
+
+  <!-- 用户管理 -->
+  <div class="section">
+    <h3>👤 当前用户</h3>
+    <select id="user-select" onchange="switchUser(this.value)" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;">
+      <option value="">-- 选择用户 --</option>
+    </select>
+    <div class="flex" style="margin-top:8px;">
+      <input type="text" id="new-user-name" placeholder="新建用户名" style="flex:1;font-size:12px;">
+      <button class="btn btn-primary btn-sm" onclick="doCreateUser()">+</button>
+    </div>
+    <div id="user-info" style="margin-top:6px;font-size:11px;color:var(--text-muted);"></div>
+  </div>
+
+  <!-- API 配置 -->
+  <div class="section">
+    <h3>⚙️ API 配置</h3>
+    <label>API Key</label>
+    <input type="password" id="cfg-key" placeholder="sk-...">
+    <label>Base URL</label>
+    <input type="text" id="cfg-url" value="https://api.deepseek.com" placeholder="https://api.deepseek.com">
+    <label>模型</label>
+    <input type="text" id="cfg-model" value="deepseek-chat" placeholder="deepseek-chat">
+    <div class="flex" style="margin-top:10px;">
+      <button class="btn btn-primary btn-sm" onclick="saveConfig()">保存</button>
+      <button class="btn btn-outline btn-sm" onclick="testConnection()">测试连接</button>
+    </div>
+    <div id="cfg-status" style="margin-top:6px;font-size:12px;"></div>
+  </div>
+
+  <!-- 数据库状态 -->
+  <div class="section">
+    <h3>📊 数据库</h3>
+    <div id="db-status">加载中...</div>
+    <button class="btn btn-outline btn-block btn-sm" onclick="refreshDB()">刷新状态</button>
+  </div>
+
+  <!-- 系统状态 -->
+  <div class="section">
+    <h3>🖥️ 系统</h3>
+    <div id="sys-status">检查中...</div>
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="main">
+  <div class="tabs">
+    <div class="tab" data-tab="chat">💬 对话录入</div>
+    <div class="tab" data-tab="upload">📤 上传简历</div>
+    <div class="tab active" data-tab="generate">✨ 定制生成</div>
+    <div class="tab" data-tab="interview">🎤 面试准备</div>
+  </div>
+
+  <!-- Chat Panel -->
+  <div class="panel" id="panel-chat">
+    <h2>💬 对话式简历录入</h2>
+    <p style="color:var(--text-muted);margin-bottom:12px;">AI 会逐步询问你的经历，帮你建立简历数据库。输入「完成」结束对话并保存。</p>
+    <div class="chat-box" id="chat-box">
+      <div class="chat-msg ai">你好！我是你的简历顾问。让我们开始吧——请先告诉我你的姓名和联系方式？</div>
+    </div>
+    <div class="chat-input-row">
+      <input type="text" id="chat-input" placeholder="输入你的回答…（⌘+Enter 发送）" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter')sendChat()">
+      <button class="btn btn-primary" id="chat-send-btn" onclick="sendChat()">发送</button>
+      <button class="btn btn-outline btn-sm" onclick="resetChat()">重新开始</button>
+    </div>
+  </div>
+
+  <!-- Upload Panel -->
+  <div class="panel" id="panel-upload">
+    <h2>📤 上传已有简历</h2>
+    <p style="color:var(--text-muted);margin-bottom:12px;">上传 PDF / DOCX / TXT 格式的简历，AI 会自动解析并导入数据库。</p>
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+      <div class="icon">📄</div>
+      <p>点击上传或拖拽文件到此处</p>
+      <p style="font-size:12px;">支持 .pdf / .docx / .txt</p>
+    </div>
+    <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt" style="display:none;" onchange="uploadFile(this)">
+    <div class="result-box" id="upload-result">
+      <strong id="upload-msg"></strong>
+    </div>
+  </div>
+
+  <!-- Generate Panel -->
+  <div class="panel active" id="panel-generate">
+    <h2>✨ 定制生成</h2>
+    <p style="color:var(--text-muted);margin-bottom:12px;">输入 JD → AI 定制简历 → 在线编辑 Typst 代码 → 生成 PDF。也可以直接编辑数据库内容。</p>
+
+    <div style="display:flex;gap:16px;min-height:0;">
+      <!-- Left: JD -->
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <h3 style="margin-bottom:8px;">目标 JD</h3>
+        <textarea id="gen-jd" placeholder="粘贴目标职位描述..." style="min-height:180px;flex:1;"></textarea>
+      </div>
+      <!-- Right: Database preview -->
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <h3>简历数据库</h3>
+          <button class="btn btn-outline btn-sm" onclick="loadDBYaml()">刷新</button>
+        </div>
+        <textarea id="gen-db-yaml" style="min-height:180px;flex:1;font-family:'SF Mono',Menlo,monospace;font-size:11px;line-height:1.4;" placeholder="加载中..."></textarea>
+        <div style="margin-top:8px;">
+          <button class="btn btn-outline btn-sm" onclick="saveDBYaml()">💾 保存修改</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" style="margin-top:16px;align-self:flex-start;" onclick="doGenerate()">🚀 AI 生成</button>
+
+    <!-- Result area -->
+    <div class="result-box" id="gen-result">
+      <div class="result-toolbar">
+        <strong id="gen-msg" style="min-width:0;"></strong>
+        <span id="compile-status" class="compile-status"></span>
+        <div style="flex:1;"></div>
+        <select id="history-select" onchange="loadFromHistory()" style="display:none;">
+          <option value="">📂 历史记录...</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('typst-import').click()">📥 导入源码</button>
+        <input type="file" id="typst-import" accept=".typ" style="display:none" onchange="importTypstFile(this)">
+        <div id="gen-actions" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
+      <div id="typst-editor-area" style="display:none;flex-direction:column;min-height:0;flex:1;">
+        <div class="editor-preview-split">
+          <div class="editor-pane">
+            <textarea id="typst-editor" class="typst-editor" spellcheck="false" placeholder="Typst 源码..."></textarea>
+            <div class="compile-error" id="compile-error"></div>
+          </div>
+          <div class="preview-pane" id="preview-pane">
+            <div class="preview-placeholder">编辑左侧 Typst 源码，1.5 秒后自动编译预览</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interview Prep Panel -->
+  <div class="panel" id="panel-interview">
+    <h2>🎤 面试准备</h2>
+    <p style="color:var(--text-muted);margin-bottom:12px;">输入目标 JD，AI 会分析你的能力差距、预测面试问题，并生成自我介绍。</p>
+
+    <div style="display:flex;gap:12px;min-height:0;flex:1;">
+      <div style="flex:1;display:flex;flex-direction:column;">
+        <textarea id="iv-jd" placeholder="粘贴目标职位描述...（也可以从定制生成面板复制过来）" style="flex:1;min-height:180px;"></textarea>
+        <button class="btn btn-primary" style="margin-top:12px;align-self:flex-start;" onclick="doInterviewPrep()">🔍 开始分析</button>
+      </div>
+      <div class="result-box" id="iv-result" style="flex:1;overflow-y:auto;max-height:calc(100vh - 200px);">
+        <div class="preview-placeholder">点击「开始分析」后，AI 将在右侧展示面试准备报告</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ─── Tabs ─────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-' + t.dataset.tab).classList.add('active');
+  });
+});
+
+// ─── Toast ────────────────────────────────────────────────
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ─── Config ───────────────────────────────────────────────
+async function loadConfig() {
+  const r = await fetch('/api/config');
+  const d = await r.json();
+  document.getElementById('cfg-key').value = d.has_key ? '' : '';
+  document.getElementById('cfg-key').placeholder = d.has_key ? '(已设置，输入新值覆盖)' : 'sk-...';
+  document.getElementById('cfg-url').value = d.base_url || 'https://api.deepseek.com';
+  document.getElementById('cfg-model').value = d.model || 'deepseek-chat';
+  document.getElementById('cfg-status').innerHTML = d.has_key
+    ? '<span class="tag ok">已配置</span>'
+    : '<span class="tag warn">未设置</span>';
+}
+
+async function saveConfig() {
+  const body = JSON.stringify({
+    api_key: document.getElementById('cfg-key').value,
+    base_url: document.getElementById('cfg-url').value,
+    model: document.getElementById('cfg-model').value,
+  });
+  const r = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body });
+  const d = await r.json();
+  toast(d.message, d.ok ? 'success' : 'error');
+  loadConfig();
+}
+
+async function testConnection() {
+  await saveConfig();
+  const r = await fetch('/api/config/test', { method: 'POST' });
+  const d = await r.json();
+  toast(d.message, d.ok ? 'success' : 'error');
+}
+
+// ─── DB Status ────────────────────────────────────────────
+async function refreshDB() {
+  const r = await fetch('/api/db/summary');
+  const d = await r.json();
+  const el = document.getElementById('db-status');
+  if (!d.exists) {
+    el.innerHTML = '<span class="tag warn">未创建</span><p style="font-size:12px;margin-top:4px;">请先上传简历或对话录入</p>';
+  } else {
+    el.innerHTML = `
+      <p style="font-size:12px;"><span class="tag ok">已就绪</span></p>
+      <p style="font-size:12px;">👤 ${d.name || '-'}</p>
+      <p style="font-size:12px;">🎓 教育: ${d.education_count} | 💼 工作: ${d.work_count} | 📁 项目: ${d.project_count}</p>
+    `;
+  }
+}
+
+// ─── System ───────────────────────────────────────────────
+async function checkSystem() {
+  const r = await fetch('/api/system/check');
+  const d = await r.json();
+  document.getElementById('sys-status').innerHTML = `
+    <p style="font-size:12px;"><span class="status-dot ${d.typst_available?'on':'off'}"></span>
+    Typst: ${d.typst_available?'已安装':'未安装'}</p>
+    <p style="font-size:12px;">Python: ${d.python_version}</p>
+  `;
+}
+
+// ─── Chat ─────────────────────────────────────────────────
+let chatBusy = false;
+let chatAbort = null;
+
+async function loadChatHistory() {
+  const r = await fetch('/api/chat/history');
+  const d = await r.json();
+  const box = document.getElementById('chat-box');
+  if (d.messages && d.messages.length > 0) {
+    box.innerHTML = d.messages.map(m =>
+      `<div class="chat-msg ${m.role}">${escapeHtml(m.content)}</div>`
+    ).join('');
+  } else {
+    box.innerHTML = '<div class="chat-msg ai">你好！我是你的简历顾问。让我们开始吧——请先告诉我你的姓名和联系方式？</div>';
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function setChatBusy(busy) {
+  chatBusy = busy;
+  const input = document.getElementById('chat-input');
+  const btn = document.getElementById('chat-send-btn');
+  input.disabled = busy;
+  btn.disabled = busy;
+  if (busy) {
+    btn.textContent = '…';
+    input.placeholder = 'AI 回复中，请稍候…';
+  } else {
+    btn.textContent = '发送';
+    input.placeholder = '输入你的回答…';
+  }
+}
+
+async function sendChat() {
+  if (chatBusy) return;  // 正在回复中，忽略新消息
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  // 如果上一轮未结束就发新消息，先终止之前的状态
+  if (chatAbort) {
+    chatAbort.abort();
+    chatAbort = null;
+  }
+
+  setChatBusy(true);
+
+  const box = document.getElementById('chat-box');
+  box.innerHTML += `<div class="chat-msg user">${escapeHtml(msg)}</div>`;
+  input.value = '';
+  box.scrollTop = box.scrollHeight;
+
+  const aiDiv = document.createElement('div');
+  aiDiv.className = 'chat-msg ai';
+  aiDiv.textContent = '';
+  box.appendChild(aiDiv);
+  box.scrollTop = box.scrollHeight;
+
+  try {
+    const r = await fetch('/api/chat/send', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({message: msg}),
+    });
+
+    if (r.headers.get('content-type')?.includes('text/event-stream')) {
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            if (data.token) {
+              fullText += data.token;
+              aiDiv.textContent = fullText;
+              box.scrollTop = box.scrollHeight;
+            } else if (data.error) {
+              aiDiv.textContent = '❌ ' + data.error;
+            }
+          }
+        }
+      }
+    } else {
+      const d = await r.json();
+      if (d.finished) {
+        aiDiv.textContent = d.message;
+        refreshDB();
+      } else {
+        aiDiv.textContent = '❌ ' + d.message;
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      aiDiv.textContent = '❌ 请求异常: ' + e.message;
+    }
+  } finally {
+    setChatBusy(false);
+  }
+}
+
+async function resetChat() {
+  if (chatAbort) {
+    chatAbort.abort();
+    chatAbort = null;
+  }
+  setChatBusy(false);
+  await fetch('/api/chat/reset', {method:'POST'});
+  document.getElementById('chat-box').innerHTML = '<div class="chat-msg ai">对话已重置。我是你的简历顾问——请告诉我你的姓名和联系方式？</div>';
+}
+
+// ─── Upload ────────────────────────────────────────────────
+const uploadZone = document.getElementById('upload-zone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', e => { e.preventDefault(); uploadZone.classList.remove('drag'); });
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag');
+  const files = e.dataTransfer.files;
+  if (files.length) doUpload(files[0]);
+});
+
+function uploadFile(input) {
+  if (input.files.length) doUpload(input.files[0]);
+}
+
+async function doUpload(file) {
+  const box = document.getElementById('upload-result');
+  const msg = document.getElementById('upload-msg');
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:20px;">⏳</span>
+      <span>正在解析简历... </span>
+      <span class="timer" id="parse-timer">0.0s</span>
+    </div>
+    <div class="progress-bar"><div class="fill"></div></div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">AI 正在提取结构信息，大文件可能需要 10-30 秒</p>
+  `;
+  const timerEl = document.getElementById('parse-timer');
+  const start = Date.now();
+  const timer = setInterval(() => { timerEl.textContent = ((Date.now() - start)/1000).toFixed(1) + 's'; }, 100);
+
+  const fd = new FormData();
+  fd.append('file', file);
+  let d;
+  try {
+    const r = await fetch('/api/upload', { method:'POST', body: fd });
+    d = await r.json();
+  } catch(e) {
+    d = { ok: false, message: '请求失败: ' + e.message };
+  }
+  clearInterval(timer);
+  const elapsed = ((Date.now() - start)/1000).toFixed(1);
+
+  box.innerHTML = '';
+  const strong = document.createElement('strong');
+  box.appendChild(strong);
+  if (d.ok || d.success) {
+    strong.innerHTML = '✅ ' + (d.message || '导入成功') + ' <span style="color:var(--text-muted);font-weight:normal;">(' + elapsed + 's)</span>';
+    refreshDB();
+  } else {
+    strong.innerHTML = '❌ ' + (d.message || '导入失败') + ' <span style="color:var(--text-muted);font-weight:normal;">(' + elapsed + 's)</span>';
+  }
+}
+
+// ─── Generate Panel ────────────────────────────────────────
+let currentTypstCode = '';
+let compileTimer = null;
+let currentPdfName = null;
+const COMPILE_DEBOUNCE_MS = 1500;
+
+async function loadDBYaml() {
+  const r = await fetch('/api/db/yaml');
+  const d = await r.json();
+  if (d.ok) {
+    document.getElementById('gen-db-yaml').value = d.yaml;
+  }
+}
+
+async function saveDBYaml() {
+  const yaml = document.getElementById('gen-db-yaml').value;
+  const r = await fetch('/api/db/update', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({yaml}),
+  });
+  const d = await r.json();
+  toast(d.message, d.ok ? 'success' : 'error');
+  if (d.ok) refreshDB();
+}
+
+// ─── Live Preview ───────────────────────────────────────────
+
+function setCompileStatus(html) {
+  document.getElementById('compile-status').innerHTML = html;
+}
+
+function showCompileError(msg) {
+  const el = document.getElementById('compile-error');
+  el.style.display = 'block';
+  el.textContent = msg;
+}
+
+function hideCompileError() {
+  document.getElementById('compile-error').style.display = 'none';
+}
+
+function debouncedCompile() {
+  if (compileTimer) clearTimeout(compileTimer);
+  setCompileStatus('<span class="spinner"></span> 即将编译...');
+  compileTimer = setTimeout(() => doLiveCompile(), COMPILE_DEBOUNCE_MS);
+}
+
+async function doLiveCompile() {
+  const code = document.getElementById('typst-editor').value;
+  if (!code.trim()) return;
+  currentTypstCode = code;
+
+  hideCompileError();
+  setCompileStatus('<span class="spinner"></span> 编译中...');
+
+  const start = Date.now();
+  let d;
+  try {
+    const r = await fetch('/api/compile', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({code}),
+    });
+    d = await r.json();
+  } catch(e) {
+    d = { ok: false, message: '请求失败: ' + e.message };
+  }
+
+  if (d.ok) {
+    const elapsed = ((Date.now()-start)/1000).toFixed(1);
+    setCompileStatus('✅ ' + elapsed + 's');
+    currentPdfName = d.pdf_name;
+    updatePdfPreview(d.pdf_url);
+    updateGenActions(d.pdf_url);
+    refreshHistory();
+  } else {
+    setCompileStatus('❌ 编译失败');
+    showCompileError(d.message);
+    // 仍然更新预览区（清空旧的）
+    updatePdfPreview(null);
+  }
+}
+
+function updatePdfPreview(pdfUrl) {
+  const pane = document.getElementById('preview-pane');
+  if (pdfUrl) {
+    pane.innerHTML = `<iframe src="${pdfUrl}#toolbar=0&navpanes=0" title="PDF Preview"></iframe>`;
+  } else {
+    pane.innerHTML = '<div class="preview-placeholder">编译失败，请检查左侧源码</div>';
+  }
+}
+
+function updateGenActions(pdfUrl) {
+  const el = document.getElementById('gen-actions');
+  el.innerHTML = `
+    <a href="${pdfUrl}" class="btn btn-primary btn-sm" download>📥 下载 PDF</a>
+    <button class="btn btn-outline btn-sm" onclick="downloadTypst()">📄 下载源码</button>
+    <button class="btn btn-outline btn-sm" onclick="doLiveCompile()">🔄 手动编译</button>
+  `;
+}
+
+// ─── History ────────────────────────────────────────────────
+
+async function refreshHistory() {
+  const r = await fetch('/api/outputs');
+  const d = await r.json();
+  const sel = document.getElementById('history-select');
+  if (!d.files || d.files.length === 0) {
+    sel.style.display = 'none';
+    return;
+  }
+  sel.style.display = 'inline-block';
+  sel.innerHTML = '<option value="">📂 历史记录 (' + d.files.length + ')...</option>';
+  d.files.forEach(f => {
+    sel.innerHTML += `<option value="${f.name}">${f.name} (${f.time})</option>`;
+  });
+}
+
+async function loadFromHistory() {
+  const sel = document.getElementById('history-select');
+  const name = sel.value;
+  if (!name) return;
+
+  const r = await fetch('/api/outputs/source?name=' + encodeURIComponent(name));
+  const d = await r.json();
+  if (!d.ok) { toast(d.message, 'error'); return; }
+
+  // 恢复源码到编辑器
+  currentTypstCode = d.content;
+  document.getElementById('typst-editor').value = d.content;
+  document.getElementById('gen-result').style.display = 'block';
+  document.getElementById('typst-editor-area').style.display = 'flex';
+
+  // 触发编译
+  doLiveCompile();
+  toast('已加载: ' + name, 'success');
+}
+
+// ─── Import ─────────────────────────────────────────────────
+
+function importTypstFile(input) {
+  if (!input.files.length) return;
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const code = e.target.result;
+    currentTypstCode = code;
+    document.getElementById('typst-editor').value = code;
+    document.getElementById('gen-result').style.display = 'block';
+    document.getElementById('typst-editor-area').style.display = 'flex';
+    document.getElementById('gen-msg').textContent = '📥 已导入: ' + file.name;
+    doLiveCompile();
+    toast('源码已导入，正在编译...', 'success');
+  };
+  reader.readAsText(file);
+  input.value = '';  // 允许重复导入同一文件
+}
+
+function downloadTypst() {
+  if (!currentTypstCode) return;
+  const blob = new Blob([currentTypstCode], {type: 'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'tailored_cv.typ';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Generate ───────────────────────────────────────────────
+
+async function doGenerate() {
+  const jd = document.getElementById('gen-jd').value.trim();
+  if (!jd) { toast('请先输入 JD', 'error'); return; }
+
+  const resultBox = document.getElementById('gen-result');
+  const msgEl = document.getElementById('gen-msg');
+  const actionsEl = document.getElementById('gen-actions');
+  const editorArea = document.getElementById('typst-editor-area');
+  resultBox.style.display = 'block';
+  msgEl.textContent = '⏳ AI 正在分析 JD 并生成简历...';
+  editorArea.style.display = 'none';
+  actionsEl.innerHTML = '';
+  setCompileStatus('<span class="spinner"></span> <span class="timer" id="gen-timer">0.0s</span>');
+
+  const timerEl = document.getElementById('gen-timer');
+  const start = Date.now();
+  const timer = setInterval(() => { if (timerEl) timerEl.textContent = ((Date.now()-start)/1000).toFixed(1)+'s'; }, 100);
+
+  let d;
+  try {
+    const r = await fetch('/api/tailor', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({jd}),
+    });
+    d = await r.json();
+  } catch(e) {
+    d = { ok: false, message: '请求失败: ' + e.message };
+  }
+  clearInterval(timer);
+  const elapsed = ((Date.now()-start)/1000).toFixed(1);
+
+  if (d.ok) {
+    currentTypstCode = d.typst_code;
+    currentPdfName = d.pdf_name;
+    msgEl.textContent = '✅ ' + d.message + ' (' + elapsed + 's)';
+    setCompileStatus('');
+    editorArea.style.display = 'flex';
+    document.getElementById('typst-editor').value = d.typst_code;
+    // 绑定 debounced 编译事件
+    document.getElementById('typst-editor').oninput = debouncedCompile;
+    updatePdfPreview(d.pdf_url);
+    updateGenActions(d.pdf_url);
+    refreshHistory();
+  } else {
+    msgEl.textContent = '❌ ' + d.message;
+    setCompileStatus('');
+  }
+}
+
+// Also bind debounce when user manually edits after loading from history/import
+document.getElementById('typst-editor').oninput = debouncedCompile;
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Interview Prep ─────────────────────────────────────────
+
+async function doInterviewPrep() {
+  const jd = document.getElementById('iv-jd').value.trim();
+  if (!jd) { toast('请先输入 JD', 'error'); return; }
+
+  const resultBox = document.getElementById('iv-result');
+  resultBox.style.display = 'block';
+  const start = Date.now();
+  resultBox.innerHTML = '<div class="preview-placeholder"><span class="spinner" style="margin-right:8px;"></span>AI 正在分析… <span class="timer" id="iv-timer">0.0s</span></div><pre id="iv-stream" style="font-size:11px;white-space:pre-wrap;max-height:300px;overflow-y:auto;margin-top:8px;color:#666;display:none;"></pre>';
+  const timerEl = document.getElementById('iv-timer');
+  const streamEl = document.getElementById('iv-stream');
+  const timer = setInterval(() => { if (timerEl) timerEl.textContent = ((Date.now()-start)/1000).toFixed(1)+'s'; }, 100);
+
+  try {
+    const r = await fetch('/api/interview-prep/stream', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({jd}),
+    });
+
+    if (!r.headers.get('content-type')?.includes('text/event-stream')) {
+      const d = await r.json();
+      throw new Error(d.message || '请求失败');
+    }
+
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('data: ')) {
+          const payload = JSON.parse(line.slice(6));
+          if (payload.token) {
+            fullText += payload.token;
+            streamEl.style.display = 'block';
+            streamEl.textContent = fullText;
+            streamEl.scrollTop = streamEl.scrollHeight;
+          } else if (payload.error) {
+            throw new Error(payload.error);
+          } else if (payload.done) {
+            clearInterval(timer);
+            if (payload.data) {
+              renderInterviewPrep(payload.data);
+            } else if (payload.parse_error) {
+              resultBox.innerHTML = `<div class="preview-placeholder" style="color:#dc2626;">AI 返回格式异常，请重试</div><pre style="font-size:10px;white-space:pre-wrap;">${escapeHtml(payload.raw || '')}</pre>`;
+            }
+            return;
+          }
+        }
+      }
+    }
+  } catch(e) {
+    clearInterval(timer);
+    resultBox.innerHTML = `<div class="preview-placeholder" style="color:#dc2626;">❌ ${e.message}</div>`;
+  }
+}
+
+function renderInterviewPrep(data) {
+  // 存储数据供导出使用
+  window._lastIVData = data;
+
+  const el = document.getElementById('iv-result');
+  let html = '';
+
+  // 导出按钮
+  html += `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    <button class="btn btn-outline" onclick="exportIVMarkdown()" style="font-size:13px;padding:6px 14px;">📥 导出 Markdown</button>
+    <button class="btn btn-outline" onclick="exportIVPDF()" style="font-size:13px;padding:6px 14px;">🖨️ 导出 PDF</button>
+  </div>`;
+
+  // 1. Gap Analysis
+  if (data.gap_analysis && data.gap_analysis.length) {
+    html += '<div class="iv-section"><h3>📊 能力差距分析</h3>';
+    data.gap_analysis.forEach(g => {
+      const levelClass = g.match_level === '强匹配' ? 'strong' : g.match_level === '部分匹配' ? 'partial' : 'missing';
+      const levelEmoji = g.match_level === '强匹配' ? '✅' : g.match_level === '部分匹配' ? '⚠️' : '❌';
+      html += `<div class="gap-card ${levelClass}">
+        <div class="gap-header"><span class="gap-title">${levelEmoji} ${escapeHtml(g.requirement || '')}</span><span class="tag ${levelClass === 'strong' ? 'ok' : levelClass === 'partial' ? 'warn' : 'err'}">${escapeHtml(g.match_level || '')} · ${escapeHtml(g.importance || '')}</span></div>
+        <div class="gap-body">${escapeHtml(g.evidence || '')}</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  // 2. Gap Remediation
+  if (data.gap_remediation && data.gap_remediation.length) {
+    html += '<div class="iv-section"><h3>🔧 缺项补充建议</h3>';
+    data.gap_remediation.forEach(r => {
+      html += `<div class="qa-card">
+        <div class="qa-q">📌 ${escapeHtml(r.gap || '')}</div>
+        <div class="gap-body"><strong>弥补方案：</strong>${escapeHtml(r.how_to_fill || '')}</div>
+        <div class="gap-body" style="margin-top:4px;"><strong>侧面回应：</strong>${escapeHtml(r.alternative_angle || '')}</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  // 3. Interview Questions
+  if (data.interview_questions && data.interview_questions.length) {
+    html += '<div class="iv-section"><h3>🎯 面试问题预测</h3>';
+    data.interview_questions.forEach(q => {
+      html += `<div class="qa-card">
+        <div class="qa-q">❓ ${escapeHtml(q.question || '')}</div>
+        <div class="qa-cat">🏷️ ${escapeHtml(q.category || '')} | 考察点：${escapeHtml(q.why_ask || '')}</div>
+        <div class="qa-tip">💡 回答要点：${escapeHtml(q.answer_tip || '')}</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  // 4. Self Introduction
+  if (data.self_intro) {
+    const si = data.self_intro;
+    html += '<div class="iv-section"><h3>🎙️ 自我介绍</h3>';
+    html += `<div class="intro-card">
+      <div class="intro-label">⏱️ ${escapeHtml(si.duration || '1-2 分钟版本')} | 📐 ${escapeHtml(si.structure || '')}</div>
+      <div class="intro-text">${escapeHtml(si.script || '')}</div>
+    </div>`;
+    html += '</div>';
+  }
+
+  if (!html) {
+    html = '<div class="preview-placeholder">分析结果为空，请重试</div>';
+  }
+  el.innerHTML = html;
+}
+
+function exportIVMarkdown() {
+  const data = window._lastIVData;
+  if (!data) return toast('没有可导出的数据', 'error');
+
+  let md = '# 🎤 面试准备报告\n\n';
+  md += `> 生成时间：${new Date().toLocaleString()}\n\n---\n\n`;
+
+  // Gap Analysis
+  if (data.gap_analysis && data.gap_analysis.length) {
+    md += '## 📊 能力差距分析\n\n';
+    data.gap_analysis.forEach(g => {
+      const emoji = g.match_level === '强匹配' ? '✅' : g.match_level === '部分匹配' ? '⚠️' : '❌';
+      md += `### ${emoji} ${g.requirement || ''}\n`;
+      md += `- **匹配程度**：${g.match_level || ''} · ${g.importance || ''}\n`;
+      md += `- **现有证据**：${g.evidence || ''}\n\n`;
+    });
+  }
+
+  // Gap Remediation
+  if (data.gap_remediation && data.gap_remediation.length) {
+    md += '## 🔧 缺项补充建议\n\n';
+    data.gap_remediation.forEach((r, i) => {
+      md += `### ${i + 1}. ${r.gap || ''}\n`;
+      md += `- **弥补方案**：${r.how_to_fill || ''}\n`;
+      md += `- **侧面回应**：${r.alternative_angle || ''}\n\n`;
+    });
+  }
+
+  // Interview Questions
+  if (data.interview_questions && data.interview_questions.length) {
+    md += '## 🎯 面试问题预测\n\n';
+    data.interview_questions.forEach((q, i) => {
+      md += `### ${i + 1}. ${q.question || ''}\n`;
+      md += `- **类别**：${q.category || ''} | 考察点：${q.why_ask || ''}\n`;
+      md += `- **回答要点**：${q.answer_tip || ''}\n\n`;
+    });
+  }
+
+  // Self Introduction
+  if (data.self_intro) {
+    const si = data.self_intro;
+    md += '## 🎙️ 自我介绍\n\n';
+    md += `> ${si.duration || '1-2 分钟版本'} | ${si.structure || ''}\n\n`;
+    md += `${si.script || ''}\n\n`;
+  }
+
+  md += '---\n\n*本报告由 AI 面试准备助手自动生成*\n';
+
+  const blob = new Blob([md], {type: 'text/markdown'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `面试准备报告_${new Date().toISOString().slice(0,10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Markdown 已下载');
+}
+
+function exportIVPDF() {
+  const data = window._lastIVData;
+  if (!data) return toast('没有可导出的数据', 'error');
+
+  let html = `<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><title>面试准备报告</title>
+<style>
+  body { font-family: -apple-system, "Heiti SC", "PingFang SC", sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #1a1a1a; line-height: 1.7; }
+  h1 { font-size: 24px; border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+  h2 { font-size: 18px; color: #2563eb; margin-top: 28px; }
+  h3 { font-size: 15px; margin-bottom: 4px; }
+  .meta { color: #888; font-size: 13px; margin-bottom: 20px; }
+  .card { background: #f9fafb; border-left: 3px solid #2563eb; padding: 10px 14px; margin: 8px 0; border-radius: 4px; }
+  .card.warn { border-left-color: #d97706; }
+  .card.miss { border-left-color: #dc2626; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 6px; }
+  .tag.ok { background: #d1fae5; color: #065f46; }
+  .tag.warn { background: #fef3c7; color: #92400e; }
+  .tag.err { background: #fee2e2; color: #991b1b; }
+  .intro-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 14px; border-radius: 6px; }
+  @media print { body { margin: 0; padding: 20px; } }
+</style></head><body>
+<h1>🎤 面试准备报告</h1>
+<p class="meta">生成时间：${new Date().toLocaleString()}</p>`;
+
+  // Gap Analysis
+  if (data.gap_analysis && data.gap_analysis.length) {
+    html += '<h2>📊 能力差距分析</h2>';
+    data.gap_analysis.forEach(g => {
+      const cls = g.match_level === '强匹配' ? '' : g.match_level === '部分匹配' ? 'warn' : 'miss';
+      const emoji = g.match_level === '强匹配' ? '✅' : g.match_level === '部分匹配' ? '⚠️' : '❌';
+      const tagCls = g.match_level === '强匹配' ? 'ok' : g.match_level === '部分匹配' ? 'warn' : 'err';
+      html += `<div class="card ${cls}"><h3>${emoji} ${escapeHtml(g.requirement)} <span class="tag ${tagCls}">${escapeHtml(g.match_level)} · ${escapeHtml(g.importance)}</span></h3><p>${escapeHtml(g.evidence)}</p></div>`;
+    });
+  }
+
+  // Gap Remediation
+  if (data.gap_remediation && data.gap_remediation.length) {
+    html += '<h2>🔧 缺项补充建议</h2>';
+    data.gap_remediation.forEach((r, i) => {
+      html += `<div class="card"><h3>📌 ${i+1}. ${escapeHtml(r.gap)}</h3><p><strong>弥补方案：</strong>${escapeHtml(r.how_to_fill)}</p><p><strong>侧面回应：</strong>${escapeHtml(r.alternative_angle)}</p></div>`;
+    });
+  }
+
+  // Interview Questions
+  if (data.interview_questions && data.interview_questions.length) {
+    html += '<h2>🎯 面试问题预测</h2>';
+    data.interview_questions.forEach((q, i) => {
+      html += `<div class="card"><h3>❓ ${i+1}. ${escapeHtml(q.question)}</h3><p>🏷️ ${escapeHtml(q.category)} | 考察点：${escapeHtml(q.why_ask)}</p><p>💡 回答要点：${escapeHtml(q.answer_tip)}</p></div>`;
+    });
+  }
+
+  // Self Introduction
+  if (data.self_intro) {
+    const si = data.self_intro;
+    html += '<h2>🎙️ 自我介绍</h2>';
+    html += `<div class="intro-box"><p>⏱️ ${escapeHtml(si.duration)} | 📐 ${escapeHtml(si.structure)}</p><p>${escapeHtml(si.script)}</p></div>`;
+  }
+
+  html += '<p style="color:#999;margin-top:30px;font-size:12px;">本报告由 AI 面试准备助手自动生成</p></body></html>';
+
+  const w = window.open('', '_blank', 'width=800,height=600');
+  w.document.write(html);
+  w.document.close();
+  w.onload = () => w.print();
+}
+
+// ─── Users ────────────────────────────────────────────────
+async function loadUsers() {
+  const r = await fetch('/api/users');
+  const d = await r.json();
+  const sel = document.getElementById('user-select');
+  const currentVal = sel.value;
+  sel.innerHTML = '<option value="">-- 选择用户 --</option>';
+  d.users.forEach(u => {
+    sel.innerHTML += `<option value="${u.name}" ${u.name === d.current ? 'selected' : ''}>${u.name} ${u.has_db ? '📄' : '🆕'}</option>`;
+  });
+  if (d.current) {
+    sel.value = d.current;
+    document.getElementById('user-info').innerHTML = `已登录: <strong>${d.current}</strong>`;
+    refreshDB();
+  }
+}
+
+async function switchUser(name) {
+  if (!name) return;
+  const r = await fetch('/api/users/switch', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name}),
+  });
+  const d = await r.json();
+  if (d.ok) {
+    document.getElementById('user-info').innerHTML = `已登录: <strong>${name}</strong>`;
+    refreshDB();
+    loadChatHistory();
+    refreshHistory();
+    toast(`已切换到 ${name}`, 'success');
+  }
+}
+
+async function doCreateUser() {
+  const input = document.getElementById('new-user-name');
+  const name = input.value.trim();
+  if (!name) return toast('请输入用户名', 'error');
+  const r = await fetch('/api/users/create', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name}),
+  });
+  const d = await r.json();
+  if (d.ok) {
+    input.value = '';
+    await loadUsers();
+    document.getElementById('user-select').value = name;
+    refreshDB();
+    toast(d.message, 'success');
+  } else {
+    toast(d.message, 'error');
+  }
+}
+
+// ─── Init ──────────────────────────────────────────────────
+loadConfig();
+loadUsers();
+checkSystem();
+refreshHistory();
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+# Git
+__pycache__/
+*.pyc
+*.pyo
+
+# 敏感配置
+.env.yaml
+
+# 用户数据
+data/
+
+# 编译产物
+outputs/
+inputs/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# 临时文件
+*.log
+tmp/
+
+# Claude Code
+.claude/
