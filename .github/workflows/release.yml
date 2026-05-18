@@ -1,0 +1,91 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download Typst
+        run: |
+          curl -sL "https://github.com/typst/typst/releases/download/v0.14.0/typst-aarch64-apple-darwin.tar.xz" -o typst.tar.xz
+          tar xJf typst.tar.xz --strip-components=1 "typst-aarch64-apple-darwin/typst"
+          chmod +x typst
+
+      - name: Install dependencies
+        run: pip install flask openai pyyaml python-docx pyinstaller
+
+      - name: Build .app
+        run: |
+          pyinstaller --name "CV-Assistant" --windowed --noconfirm \
+            --add-binary "typst:." \
+            --add-data "templates:templates" \
+            --add-data "prompts:prompts" \
+            --add-data "fonts:fonts" \
+            --add-data "install/.env.yaml.example:install" \
+            launcher.py
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg --volname "CV-Assistant" --window-pos 200 120 --window-size 500 300 \
+            "dist/CV-Assistant.dmg" "dist/CV-Assistant.app"
+
+      - name: Upload DMG to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/CV-Assistant.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download Typst
+        shell: bash
+        run: |
+          curl -sL "https://github.com/typst/typst/releases/download/v0.14.0/typst-x86_64-pc-windows-msvc.zip" -o typst.zip
+          unzip -q typst.zip
+          mv typst-x86_64-pc-windows-msvc/typst.exe .
+          rm -rf typst-x86_64-pc-windows-msvc typst.zip
+
+      - name: Install dependencies
+        run: pip install flask openai pyyaml python-docx pyinstaller
+
+      - name: Build EXE
+        shell: bash
+        run: |
+          pyinstaller --name "CV-Assistant" --windowed --noconfirm \
+            --add-binary "typst.exe;." \
+            --add-data "templates;templates" \
+            --add-data "prompts;prompts" \
+            --add-data "fonts;fonts" \
+            --add-data "install/.env.yaml.example;install" \
+            launcher.py
+
+      - name: Zip EXE folder
+        shell: bash
+        run: cd dist && zip -r CV-Assistant-Windows.zip CV-Assistant/
+
+      - name: Upload EXE to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/CV-Assistant-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
