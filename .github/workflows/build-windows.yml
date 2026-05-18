@@ -16,19 +16,20 @@ jobs:
           python-version: "3.12"
 
       - name: Download Typst
+        shell: bash
         run: |
           curl -sL "https://github.com/typst/typst/releases/download/v0.14.0/typst-x86_64-pc-windows-msvc.zip" -o typst.zip
           unzip -q typst.zip
           mv typst-x86_64-pc-windows-msvc/typst.exe .
-          rmdir typst-x86_64-pc-windows-msvc
-          rm typst.zip
+          rm -rf typst-x86_64-pc-windows-msvc typst.zip
 
       - name: Install dependencies
         run: pip install flask openai pyyaml python-docx pyinstaller
 
       - name: Build EXE
+        shell: bash
         run: |
-          pyinstaller --name "CV-Assistant" --windowed --noconfirm --add-binary "typst.exe;." --add-data "templates;templates" --add-data "prompts;prompts" --add-data "fonts;fonts" --add-data "install\.env.yaml.example;install" launcher.py
+          pyinstaller --name "CV-Assistant" --windowed --noconfirm --add-binary "typst.exe;." --add-data "templates;templates" --add-data "prompts;prompts" --add-data "fonts;fonts" --add-data "install/.env.yaml.example;install" launcher.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
