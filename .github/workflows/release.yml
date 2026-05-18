@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-macos:
     runs-on: macos-latest
@@ -45,8 +48,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/CV-Assistant.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-windows:
     runs-on: windows-latest
@@ -80,12 +81,9 @@ jobs:
             launcher.py
 
       - name: Zip EXE folder
-        shell: bash
-        run: cd dist && zip -r CV-Assistant-Windows.zip CV-Assistant/
+        run: Compress-Archive -Path dist/CV-Assistant/* -DestinationPath dist/CV-Assistant-Windows.zip
 
       - name: Upload EXE to Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/CV-Assistant-Windows.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
