@@ -35,4 +35,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CV-Assistant-Windows
-          path: dist/CV-Assistant.exe
+          path: dist/CV-Assistant/
