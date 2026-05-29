@@ -210,7 +210,7 @@ def api_upload():
 
 @app.route("/api/upload/stream", methods=["POST"])
 def api_upload_stream():
-    """SSE 流式上传，实时推送解析进度，避免超时。"""
+    """SSE 流式上传（保留兼容）。"""
     u = current_user()
     if not u:
         return jsonify({"ok": False, "message": "请先创建用户"})
@@ -231,19 +231,12 @@ def api_upload_stream():
         return jsonify({"ok": False, "message": "请先配置 API Key"})
 
     from core import import_resume_stream
-    import traceback
-
-    def _heartbeat(generator, interval=15):
-        """在 SSE 事件间隔中插入心跳注释，防止 WebKit 60s 超时断开。"""
-        import time
-        for event in generator:
-            yield event
-            yield f": heartbeat {int(time.time())}\n"
 
     def generate():
         try:
-            for event in _heartbeat(import_resume_stream(cfg, tmp.name, user=u)):
+            for event in import_resume_stream(cfg, tmp.name, user=u):
                 yield event
+                yield ": hb\n"
         except Exception as e:
             import traceback as _tb
             detail = _tb.format_exc()
@@ -253,11 +246,75 @@ def api_upload_stream():
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ─── 轮询式上传（绕过 WebKit 60s 超时） ──────────────────────────────
+import threading
+import uuid
+
+_upload_tasks = {}  # task_id → {events: [...], done: bool, error: str|None}
+
+
+@app.route("/api/upload/poll", methods=["POST"])
+def api_upload_poll_start():
+    """启动后台上传解析，立即返回 task_id。"""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "请先创建用户"})
+    if "file" not in request.files:
+        return jsonify({"ok": False, "message": "未选择文件"})
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"ok": False, "message": "文件名为空"})
+
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix)
+    file.save(tmp.name)
+    tmp.close()
+
+    cfg = load_config()
+    if not cfg["api_key"]:
+        os.unlink(tmp.name)
+        return jsonify({"ok": False, "message": "请先配置 API Key"})
+
+    from core import import_resume_stream
+
+    task_id = uuid.uuid4().hex
+    _upload_tasks[task_id] = {"events": [], "done": False, "error": None}
+
+    def _run():
+        try:
+            for event in import_resume_stream(cfg, tmp.name, user=u):
+                _upload_tasks[task_id]["events"].append(event)
+        except Exception as e:
+            import traceback as _tb
+            _upload_tasks[task_id]["error"] = f"{e}\n{_tb.format_exc()}"
+        _upload_tasks[task_id]["done"] = True
+        os.unlink(tmp.name)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "task_id": task_id})
+
+
+@app.route("/api/upload/poll/<task_id>", methods=["GET"])
+def api_upload_poll_status(task_id):
+    """获取后台任务的最新事件。"""
+    task = _upload_tasks.get(task_id)
+    if not task:
+        return jsonify({"ok": False, "message": "任务不存在或已过期"})
+
+    events = task["events"][:]
+    task["events"] = []  # 清空已发送的事件
+
+    result = {
+        "ok": True,
+        "done": task["done"],
+        "error": task["error"],
+        "events": events,
+    }
+    return jsonify(result)
 
 
 # ─── API: 对话 ────────────────────────────────────────────────────
