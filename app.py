@@ -231,6 +231,7 @@ def api_upload_stream():
         return jsonify({"ok": False, "message": "请先配置 API Key"})
 
     from core import import_resume_stream
+    import traceback
 
     def _heartbeat(generator, interval=15):
         """在 SSE 事件间隔中插入心跳注释，防止 WebKit 60s 超时断开。"""
@@ -244,7 +245,9 @@ def api_upload_stream():
             for event in _heartbeat(import_resume_stream(cfg, tmp.name, user=u)):
                 yield event
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            import traceback as _tb
+            detail = _tb.format_exc()
+            yield f"data: {json.dumps({'error': str(e), 'traceback': detail})}\n\n"
         os.unlink(tmp.name)
 
     return Response(

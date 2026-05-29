@@ -715,7 +715,7 @@ async function doUpload(file) {
             refreshDB();
             return;
           } else if (data.error) {
-            throw new Error(data.error);
+            throw new Error(data.error + (data.traceback ? '\n\n' + data.traceback : ''));
           }
         }
       }
@@ -723,7 +723,10 @@ async function doUpload(file) {
   } catch(e) {
     clearInterval(timer);
     const elapsed = ((Date.now() - start)/1000).toFixed(1);
-    box.innerHTML = '<strong>❌ ' + e.message + ' <span style="color:var(--text-muted);font-weight:normal;">(' + elapsed + 's)</span></strong>';
+    box.innerHTML = '<strong>❌ ' + escapeHtml(e.message.split('\n')[0]) + ' <span style="color:var(--text-muted);font-weight:normal;">(' + elapsed + 's)</span></strong>';
+    if (e.message.includes('\n')) {
+      box.innerHTML += '<pre style="font-size:9px;white-space:pre-wrap;max-height:120px;overflow-y:auto;margin-top:6px;color:#999;">' + escapeHtml(e.message.split('\n').slice(1).join('\n')) + '</pre>';
+    }
   }
 }
 
