@@ -29,13 +29,14 @@ jobs:
           codesign --force --sign - typst 2>/dev/null || true
 
       - name: Install dependencies
-        run: pip install flask openai pyyaml python-docx pyinstaller
+        run: pip install flask openai pyyaml python-docx pypdf pywebview pyinstaller
 
       - name: Build .app
         run: |
           pyinstaller --name "CV-Assistant" --windowed --noconfirm \
             --hidden-import pypdf \
             --hidden-import docx \
+            --hidden-import webview \
             --add-binary "typst:." \
             --add-data "templates:templates" \
             --add-data "prompts:prompts" \
@@ -72,7 +73,7 @@ jobs:
           rm -rf typst-x86_64-pc-windows-msvc typst.zip
 
       - name: Install dependencies
-        run: pip install flask openai pyyaml python-docx pyinstaller
+        run: pip install flask openai pyyaml python-docx pypdf pywebview pyinstaller
 
       - name: Build EXE
         shell: bash

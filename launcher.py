@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
-"""CV-Assistant 桌面启动器 — PyInstaller 入口点。"""
+"""CV-Assistant 桌面启动器 — 原生窗口，无需浏览器。"""
 import os
 import sys
 import threading
-import webbrowser
 
+import webview
 from app import app
 
 
-def _open_browser(port: int):
-    webbrowser.open(f"http://127.0.0.1:{port}")
+def _run_flask(port: int):
+    app.run(debug=False, host="127.0.0.1", port=port)
 
 
 def main():
     port = int(os.environ.get("CV_PORT", "8080"))
 
-    # 延迟 0.5 秒打开浏览器，等 Flask 启动好
-    threading.Timer(0.5, _open_browser, args=[port]).start()
+    flask_thread = threading.Thread(target=_run_flask, args=[port], daemon=True)
+    flask_thread.start()
 
-    print(f"""
-╔══════════════════════════════════════╗
-║   🎯 AI Resume Tailoring Agent       ║
-║   浏览器访问: http://127.0.0.1:{port}   ║
-╚══════════════════════════════════════╝
-""")
-    app.run(debug=False, host="127.0.0.1", port=port)
+    webview.create_window(
+        title="CV-Assistant - AI 简历定制助手",
+        url=f"http://127.0.0.1:{port}",
+        width=1280,
+        height=860,
+        min_size=(900, 600),
+        text_select=True,
+    )
+    webview.start()
 
 
 if __name__ == "__main__":

@@ -24,12 +24,12 @@ jobs:
           rm -rf typst-x86_64-pc-windows-msvc typst.zip
 
       - name: Install dependencies
-        run: pip install flask openai pyyaml python-docx pyinstaller
+        run: pip install flask openai pyyaml python-docx pypdf pywebview pyinstaller
 
       - name: Build EXE
         shell: bash
         run: |
-          pyinstaller --name "CV-Assistant" --windowed --noconfirm --hidden-import pypdf --hidden-import docx --add-binary "typst.exe;." --add-data "templates;templates" --add-data "prompts;prompts" --add-data "fonts;fonts" --add-data "install/.env.yaml.example;install" launcher.py
+          pyinstaller --name "CV-Assistant" --windowed --noconfirm --hidden-import pypdf --hidden-import docx --hidden-import webview --add-binary "typst.exe;." --add-data "templates;templates" --add-data "prompts;prompts" --add-data "fonts;fonts" --add-data "install/.env.yaml.example;install" launcher.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
