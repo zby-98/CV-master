@@ -713,6 +713,81 @@ def import_resume_stream(config: dict, file_path: str, user: str = "default"):
     _log("import_resume_stream done")
 
 
+def tailor_stream(config: dict, jd_text: str, db_yaml: str, user: str):
+    """流式简历定制生成器——逐 token 推送 + 最终编译 PDF。"""
+    import json as _json
+    import re as _re
+
+    prompt_path = RESOURCE_DIR / "prompts" / "system_prompt.md"
+    if prompt_path.exists():
+        prompt_template = prompt_path.read_text(encoding="utf-8")
+    else:
+        prompt_template = "{jd_text}\n\n{master_yaml}"
+
+    system_prompt = prompt_template.replace("{jd_text}", jd_text).replace("{master_yaml}", db_yaml)
+
+    yield f"data: {_json.dumps({'stage': 'ai_start', 'message': 'AI 正在分析 JD 并生成简历...'})}\n\n"
+
+    client = AIClient(config)
+    full_result = ""
+    try:
+        for token in client.chat_long_stream(system_prompt, "请根据以上 JD 和简历数据库，生成定制化的 Typst 简历代码。"):
+            full_result += token
+            yield f"data: {_json.dumps({'stage': 'ai_token', 'token': token})}\n\n"
+    except Exception as e:
+        import traceback as _tb
+        yield f"data: {_json.dumps({'error': f'AI 调用失败: {e}', 'traceback': _tb.format_exc()})}\n\n"
+        return
+
+    # 清理代码块标记
+    typst_code = full_result.strip()
+    for prefix in ["```typst", "```"]:
+        if typst_code.startswith(prefix):
+            typst_code = typst_code[len(prefix):].strip()
+    if typst_code.endswith("```"):
+        typst_code = typst_code[:-3].strip()
+    typst_code = _ensure_typst_import(typst_code)
+    typst_code = _patch_typst_metadata(typst_code)
+
+    # 编译 PDF
+    yield f"data: {_json.dumps({'stage': 'compile', 'message': '正在编译 PDF...'})}\n\n"
+    compiler = TypstCompiler(user)
+    pdf_path, ok, msg = compiler.compile(typst_code, "tailored_cv")
+
+    if ok:
+        yield f"data: {_json.dumps({'stage': 'done', 'message': '简历生成成功！', 'typst_code': typst_code, 'pdf_url': f'/outputs/{pdf_path.name}', 'pdf_name': pdf_path.name})}\n\n"
+    else:
+        yield f"data: {_json.dumps({'stage': 'done_but_compile_failed', 'message': msg, 'typst_code': typst_code, 'pdf_url': None, 'pdf_name': None})}\n\n"
+
+
+def interview_prep_stream(config: dict, jd_text: str, db_yaml: str):
+    """流式面试准备生成器——逐 token 推送 + 最终解析 JSON。"""
+    import json as _json
+
+    system_prompt = INTERVIEW_PREP_PROMPT.replace("{jd_text}", jd_text).replace("{master_yaml}", db_yaml)
+
+    yield f"data: {_json.dumps({'stage': 'ai_start', 'message': 'AI 正在分析 JD 匹配度和面试策略...'})}\n\n"
+
+    client = AIClient(config)
+    full_result = ""
+    try:
+        for token in client.chat_long_stream(system_prompt, "请根据以上 JD 和简历数据库，输出面试准备分析报告（JSON 格式）。"):
+            full_result += token
+            yield f"data: {_json.dumps({'stage': 'ai_token', 'token': token})}\n\n"
+    except Exception as e:
+        import traceback as _tb
+        yield f"data: {_json.dumps({'error': f'AI 调用失败: {e}', 'traceback': _tb.format_exc()})}\n\n"
+        return
+
+    yield f"data: {_json.dumps({'stage': 'parse', 'message': '正在解析分析结果...'})}\n\n"
+    try:
+        cleaned = _clean_code_fence(full_result, "json")
+        data_parsed = json.loads(cleaned)
+        yield f"data: {_json.dumps({'stage': 'done', 'message': '面试准备报告已生成！', 'data': data_parsed})}\n\n"
+    except json.JSONDecodeError:
+        yield f"data: {_json.dumps({'stage': 'done_raw', 'message': 'AI 返回格式异常，显示原始内容', 'raw': full_result})}\n\n"
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 对话式录入
 # ═══════════════════════════════════════════════════════════════════

@@ -250,16 +250,53 @@ def api_upload_stream():
     )
 
 
-# ─── 轮询式上传（绕过 WebKit 60s 超时） ──────────────────────────────
+# ─── 轮询式任务管理器（绕过 WebKit 60s 超时） ──────────────────────────
 import threading
 import uuid
 
-_upload_tasks = {}  # task_id → {events: [...], done: bool, error: str|None}
+_tasks = {}  # task_id → {events: [...], done: bool, error: str|None}
 
+
+def _start_task(generator):
+    """启动后台任务，返回 task_id。前端通过 /poll/<id> 拉取进度。"""
+    task_id = uuid.uuid4().hex
+    _tasks[task_id] = {"events": [], "done": False, "error": None}
+
+    def _run():
+        try:
+            for event in generator:
+                _tasks[task_id]["events"].append(event)
+        except Exception as e:
+            import traceback as _tb
+            _tasks[task_id]["error"] = f"{e}\n{_tb.format_exc()}"
+        _tasks[task_id]["done"] = True
+
+    threading.Thread(target=_run, daemon=True).start()
+    return task_id
+
+
+@app.route("/api/poll/<task_id>", methods=["GET"])
+def api_poll_status(task_id):
+    """获取后台任务的最新事件。"""
+    task = _tasks.get(task_id)
+    if not task:
+        return jsonify({"ok": False, "message": "任务不存在或已过期"})
+
+    events = task["events"][:]
+    task["events"] = []
+
+    return jsonify({
+        "ok": True,
+        "done": task["done"],
+        "error": task["error"],
+        "events": events,
+    })
+
+
+# ─── 上传（轮询） ──────────────────────────────────────────────────
 
 @app.route("/api/upload/poll", methods=["POST"])
 def api_upload_poll_start():
-    """启动后台上传解析，立即返回 task_id。"""
     u = current_user()
     if not u:
         return jsonify({"ok": False, "message": "请先创建用户"})
@@ -281,40 +318,71 @@ def api_upload_poll_start():
 
     from core import import_resume_stream
 
-    task_id = uuid.uuid4().hex
-    _upload_tasks[task_id] = {"events": [], "done": False, "error": None}
-
     def _run():
         try:
             for event in import_resume_stream(cfg, tmp.name, user=u):
-                _upload_tasks[task_id]["events"].append(event)
-        except Exception as e:
-            import traceback as _tb
-            _upload_tasks[task_id]["error"] = f"{e}\n{_tb.format_exc()}"
-        _upload_tasks[task_id]["done"] = True
-        os.unlink(tmp.name)
+                yield event
+        finally:
+            os.unlink(tmp.name)
 
-    threading.Thread(target=_run, daemon=True).start()
+    task_id = _start_task(_run())
     return jsonify({"ok": True, "task_id": task_id})
 
 
-@app.route("/api/upload/poll/<task_id>", methods=["GET"])
-def api_upload_poll_status(task_id):
-    """获取后台任务的最新事件。"""
-    task = _upload_tasks.get(task_id)
-    if not task:
-        return jsonify({"ok": False, "message": "任务不存在或已过期"})
+# ─── 定制生成（轮询） ──────────────────────────────────────────────
 
-    events = task["events"][:]
-    task["events"] = []  # 清空已发送的事件
+@app.route("/api/tailor/poll", methods=["POST"])
+def api_tailor_poll_start():
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "请先创建用户"})
 
-    result = {
-        "ok": True,
-        "done": task["done"],
-        "error": task["error"],
-        "events": events,
-    }
-    return jsonify(result)
+    cfg = load_config()
+    if not cfg["api_key"]:
+        return jsonify({"ok": False, "message": "请先配置 API Key"})
+
+    data = request.json
+    jd_text = data.get("jd", "").strip()
+    if not jd_text:
+        return jsonify({"ok": False, "message": "请输入 JD 内容"})
+
+    db = ResumeDatabase(u)
+    if not db.exists():
+        return jsonify({"ok": False, "message": "简历数据库不存在，请先上传或对话录入"})
+    db.load()
+
+    from core import tailor_stream
+
+    task_id = _start_task(tailor_stream(cfg, jd_text, db.to_yaml_string(), u))
+    return jsonify({"ok": True, "task_id": task_id})
+
+
+# ─── 面试准备（轮询） ──────────────────────────────────────────────
+
+@app.route("/api/interview-prep/poll", methods=["POST"])
+def api_interview_prep_poll_start():
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "请先选择用户"})
+
+    cfg = load_config()
+    if not cfg["api_key"]:
+        return jsonify({"ok": False, "message": "请先配置 API Key"})
+
+    data = request.json
+    jd_text = data.get("jd", "").strip()
+    if not jd_text:
+        return jsonify({"ok": False, "message": "请输入 JD 内容"})
+
+    db = ResumeDatabase(u)
+    if not db.exists():
+        return jsonify({"ok": False, "message": "简历数据库不存在"})
+    db.load()
+
+    from core import interview_prep_stream
+
+    task_id = _start_task(interview_prep_stream(cfg, jd_text, db.to_yaml_string()))
+    return jsonify({"ok": True, "task_id": task_id})
 
 
 # ─── API: 对话 ────────────────────────────────────────────────────
