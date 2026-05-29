@@ -34,6 +34,8 @@ jobs:
       - name: Build .app
         run: |
           pyinstaller --name "CV-Assistant" --windowed --noconfirm \
+            --hidden-import pypdf \
+            --hidden-import docx \
             --add-binary "typst:." \
             --add-data "templates:templates" \
             --add-data "prompts:prompts" \
