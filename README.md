@@ -2,12 +2,11 @@
 
 根据职位描述（JD）智能定制简历的 Web 工具。支持多用户、对话录入、实时 Typst 编译预览、面试准备分析。
 
-<p align="center">
-  <img src="assets/screenshots/01-generate.png" alt="定制生成主界面" width="90%" />
-</p>
-
 ## 📸 功能演示
 
+> 将截图放入 `assets/screenshots/` 目录后，取消下方注释即可展示。
+
+<!--
 | 定制生成 | 对话录入 |
 |:---:|:---:|
 | ![](assets/screenshots/01-generate.png) | ![](assets/screenshots/02-chat.png) |
@@ -17,6 +16,7 @@
 |:---:|:---:|
 | ![](assets/screenshots/03-upload.png) | ![](assets/screenshots/04-interview.png) |
 | 上传 PDF / DOCX 简历文件，AI 自动解析提取结构化信息 | 能力差距分析 + 面试问题预测 + 自我介绍生成 |
+-->
 
 ## 功能
 
