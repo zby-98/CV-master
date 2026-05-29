@@ -18,7 +18,7 @@ jobs:
       - name: Download Typst
         shell: bash
         run: |
-          curl -sL "https://github.com/typst/typst/releases/download/v0.14.0/typst-x86_64-pc-windows-msvc.zip" -o typst.zip
+          curl -sL "https://github.com/typst/typst/releases/download/v0.14.2/typst-x86_64-pc-windows-msvc.zip" -o typst.zip
           unzip -q typst.zip
           mv typst-x86_64-pc-windows-msvc/typst.exe .
           rm -rf typst-x86_64-pc-windows-msvc typst.zip
