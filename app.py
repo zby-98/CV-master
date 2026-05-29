@@ -469,11 +469,18 @@ def api_interview_prep_stream():
 
 @app.route("/api/system/check", methods=["GET"])
 def api_system_check():
-    from core import _check_command
+    from core import check_typst_available
     return jsonify({
-        "typst_available": _check_command("typst"),
+        "typst": check_typst_available(),
         "python_version": __import__("sys").version.split()[0],
     })
+
+
+@app.route("/api/system/install-typst", methods=["POST"])
+def api_install_typst():
+    from core import install_typst
+    ok, msg = install_typst()
+    return jsonify({"ok": ok, "message": msg})
 
 
 # ─── 启动 ──────────────────────────────────────────────────────────

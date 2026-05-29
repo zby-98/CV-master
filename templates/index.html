@@ -409,11 +409,36 @@ async function refreshDB() {
 async function checkSystem() {
   const r = await fetch('/api/system/check');
   const d = await r.json();
-  document.getElementById('sys-status').innerHTML = `
-    <p style="font-size:12px;"><span class="status-dot ${d.typst_available?'on':'off'}"></span>
-    Typst: ${d.typst_available?'已安装':'未安装'}</p>
-    <p style="font-size:12px;">Python: ${d.python_version}</p>
-  `;
+  const t = d.typst;
+  if (t.available) {
+    document.getElementById('sys-status').innerHTML = `
+      <p style="font-size:12px;"><span class="status-dot on"></span> Typst: ${t.version || '已安装'}</p>
+      <p style="font-size:12px;">Python: ${d.python_version}</p>
+    `;
+  } else {
+    document.getElementById('sys-status').innerHTML = `
+      <p style="font-size:12px;"><span class="status-dot off"></span> Typst: 未安装</p>
+      <p style="font-size:12px;">Python: ${d.python_version}</p>
+      <button class="btn btn-primary btn-sm btn-block" onclick="installTypst()" style="margin-top:6px;">🔧 一键安装 Typst</button>
+      <p style="font-size:10px;color:var(--text-muted);margin-top:4px;">需要 Homebrew，或手动运行 brew install typst</p>
+    `;
+  }
+}
+
+async function installTypst() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⏳ 安装中...';
+  try {
+    const r = await fetch('/api/system/install-typst', { method: 'POST' });
+    const d = await r.json();
+    toast(d.message, d.ok ? 'success' : 'error');
+  } catch(e) {
+    toast('安装请求失败: ' + e.message, 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = '🔧 一键安装 Typst';
+  setTimeout(checkSystem, 2000);
 }
 
 // ─── Chat ─────────────────────────────────────────────────

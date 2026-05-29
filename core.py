@@ -401,7 +401,7 @@ class TypstCompiler:
         typst_cmd = _get_typst_cmd()
         _fix_bundled_binary(typst_cmd)
         if not _check_command(typst_cmd):
-            return pdf_path, False, "Typst CLI 未安装。请运行: brew install typst"
+            return pdf_path, False, "Typst CLI 未安装。请在左侧系统面板点击「一键安装 Typst」，或手动运行: brew install typst"
 
         fonts_dir = RESOURCE_DIR / "fonts"
         cmd = [typst_cmd, "compile"]
@@ -425,6 +425,55 @@ def _check_command(cmd: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def check_typst_available() -> dict:
+    """检查 Typst 是否可用，返回详细信息。"""
+    cmd = _get_typst_cmd()
+    _fix_bundled_binary(cmd)
+    available = _check_command(cmd)
+    result = {
+        "available": available,
+        "path": cmd,
+        "is_bundled": _is_frozen() and cmd != "typst",
+    }
+    if available:
+        try:
+            r = subprocess.run([cmd, "--version"], capture_output=True, text=True)
+            result["version"] = r.stdout.strip()
+        except Exception:
+            pass
+    return result
+
+
+def install_typst() -> tuple[bool, str]:
+    """一键安装 Typst CLI。macOS 用 brew，否则引导用户手动安装。"""
+    if sys.platform == "darwin":
+        # 优先尝试 brew install
+        for installer in ["/opt/homebrew/bin/brew", "/usr/local/bin/brew", "brew"]:
+            try:
+                r = subprocess.run(
+                    [installer, "install", "typst"],
+                    capture_output=True, text=True, timeout=300,
+                )
+                if r.returncode == 0:
+                    return True, "Typst 已通过 Homebrew 安装成功"
+            except Exception:
+                continue
+        return False, (
+            "自动安装失败。请手动安装 Typst：\n"
+            "1. 打开终端运行: brew install typst\n"
+            "2. 或从 https://github.com/typst/typst/releases 下载"
+        )
+    elif sys.platform == "win32":
+        return False, (
+            "请手动安装 Typst：\n"
+            "1. 打开 https://github.com/typst/typst/releases\n"
+            "2. 下载 typst-x86_64-pc-windows-msvc.zip\n"
+            "3. 解压后将 typst.exe 放到系统 PATH 中"
+        )
+    else:
+        return False, "请从 https://github.com/typst/typst/releases 手动安装 Typst"
 
 
 def _fix_bundled_binary(cmd: str) -> bool:
