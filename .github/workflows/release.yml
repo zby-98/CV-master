@@ -29,7 +29,7 @@ jobs:
           codesign --force --sign - typst 2>/dev/null || true
 
       - name: Install dependencies
-        run: pip install flask openai pyyaml python-docx pypdf pywebview pyinstaller
+        run: pip install flask openai pyyaml python-docx pypdf pywebview waitress pyinstaller
 
       - name: Build .app
         run: |
@@ -73,7 +73,7 @@ jobs:
           rm -rf typst-x86_64-pc-windows-msvc typst.zip
 
       - name: Install dependencies
-        run: pip install flask openai pyyaml python-docx pypdf pywebview pyinstaller
+        run: pip install flask openai pyyaml python-docx pypdf pywebview waitress pyinstaller
 
       - name: Build EXE
         shell: bash

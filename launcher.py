@@ -5,11 +5,12 @@ import sys
 import threading
 
 import webview
+from waitress import serve
 from app import app
 
 
 def _run_flask(port: int):
-    app.run(debug=False, host="127.0.0.1", port=port)
+    serve(app, host="127.0.0.1", port=port, threads=6)
 
 
 def main():

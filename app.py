@@ -232,15 +232,30 @@ def api_upload_stream():
 
     from core import import_resume_stream
 
+    def _heartbeat(generator, interval=15):
+        """在 SSE 事件间隔中插入心跳注释，防止 WebKit 60s 超时断开。"""
+        import time
+        for event in generator:
+            yield event
+            yield f": heartbeat {int(time.time())}\n"
+
     def generate():
         try:
-            for event in import_resume_stream(cfg, tmp.name, user=u):
+            for event in _heartbeat(import_resume_stream(cfg, tmp.name, user=u)):
                 yield event
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         os.unlink(tmp.name)
 
-    return Response(stream_with_context(generate()), mimetype="text/event-stream")
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # ─── API: 对话 ────────────────────────────────────────────────────

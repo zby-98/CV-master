@@ -177,9 +177,95 @@
   .intro-card { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius); padding: 14px 18px; }
   .intro-card .intro-label { font-size: 11px; color: #166534; margin-bottom: 4px; }
   .intro-card .intro-text { font-size: 14px; line-height: 1.8; color: #1a202c; }
+
+  /* Onboarding modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadein .2s ease;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal {
+    background: var(--card); border-radius: 16px; padding: 32px; max-width: 520px;
+    width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,.2);
+  }
+  .modal h2 { font-size: 22px; margin-bottom: 8px; }
+  .modal .modal-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
+  .modal .step-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+  .modal .step-item {
+    display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px;
+    border-radius: var(--radius); border: 1px solid var(--border);
+    transition: all .2s;
+  }
+  .modal .step-item.done { background: #f0fdf4; border-color: #bbf7d0; }
+  .modal .step-item.current { background: #eff6ff; border-color: #93c5fd; }
+  .modal .step-num {
+    width: 28px; height: 28px; min-width: 28px; border-radius: 50%;
+    background: #e2e8f0; color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .modal .step-item.done .step-num { background: var(--success); color: #fff; }
+  .modal .step-item.current .step-num { background: var(--primary); color: #fff; }
+  .modal .step-info { flex: 1; }
+  .modal .step-info .step-title { font-size: 14px; font-weight: 600; }
+  .modal .step-info .step-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal .modal-actions .btn { padding: 10px 20px; font-size: 14px; }
+
+  /* Section warnings */
+  .section.warn { border-color: #fbbf24; background: #fffbeb; }
+  .section.warn h3 { color: #92400e; }
+  .section.ok { border-color: #bbf7d0; background: #f0fdf4; }
+  .section.ok h3 { color: #166534; }
+
+  /* Workflow indicator */
+  .workflow { display: flex; gap: 4px; margin-bottom: 16px; }
+  .workflow .wf-step {
+    flex: 1; text-align: center; padding: 8px 4px; border-radius: 6px;
+    font-size: 11px; color: var(--text-muted); background: #e8ecf1;
+    transition: all .2s;
+  }
+  .workflow .wf-step.active { background: var(--primary); color: #fff; font-weight: 600; }
+  .workflow .wf-step.done { background: #bbf7d0; color: #166534; }
 </style>
 </head>
 <body>
+
+<!-- Onboarding Modal -->
+<div class="modal-overlay" id="onboard-modal">
+  <div class="modal">
+    <h2>🚀 欢迎使用 CV Tailor</h2>
+    <p class="modal-sub">只需三步，AI 帮你量身定制简历。让我们开始吧——</p>
+    <div class="step-list" id="onboard-steps">
+      <div class="step-item current" data-step="config">
+        <span class="step-num">1</span>
+        <div class="step-info">
+          <div class="step-title">配置 API</div>
+          <div class="step-desc">在左侧面板填入 API Key，点击「测试连接」确认可用</div>
+        </div>
+      </div>
+      <div class="step-item" data-step="user">
+        <span class="step-num">2</span>
+        <div class="step-info">
+          <div class="step-title">录入简历</div>
+          <div class="step-desc">上传 PDF/DOCX 简历，或通过对话逐步填写</div>
+        </div>
+      </div>
+      <div class="step-item" data-step="generate">
+        <span class="step-num">3</span>
+        <div class="step-info">
+          <div class="step-title">定制生成</div>
+          <div class="step-desc">粘贴目标 JD，一键生成专属简历并下载 PDF</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeOnboard()">稍后再说</button>
+      <button class="btn btn-primary" id="onboard-cta" onclick="onboardCTA()">开始配置 →</button>
+    </div>
+  </div>
+</div>
 
 <!-- Sidebar -->
 <aside class="sidebar">
@@ -1172,6 +1258,102 @@ async function doCreateUser() {
     toast(d.message, 'error');
   }
 }
+
+// ─── Onboarding ─────────────────────────────────────────────
+let onboardVisible = false;
+
+function showOnboard() {
+  if (onboardVisible) return;
+  onboardVisible = true;
+  document.getElementById('onboard-modal').classList.remove('hidden');
+  updateOnboardSteps();
+}
+
+function closeOnboard() {
+  onboardVisible = false;
+  document.getElementById('onboard-modal').classList.add('hidden');
+  localStorage.setItem('cv-onboard-done', '1');
+}
+
+function updateOnboardSteps() {
+  // Check which steps are done
+  const steps = document.querySelectorAll('#onboard-steps .step-item');
+  let currentFound = false;
+  steps.forEach(s => s.classList.remove('done', 'current'));
+
+  // Step 1: API configured
+  fetch('/api/config').then(r => r.json()).then(d => {
+    if (d.has_key) {
+      document.querySelector('[data-step="config"]').classList.add('done');
+      document.querySelector('[data-step="config"]').classList.remove('current');
+    } else {
+      document.querySelector('[data-step="config"]').classList.add('current');
+    }
+  });
+
+  // Step 2: Resume database
+  fetch('/api/db/summary').then(r => r.json()).then(d => {
+    if (d.exists) {
+      document.querySelector('[data-step="user"]').classList.add('done');
+      document.querySelector('[data-step="user"]').classList.remove('current');
+    } else if (document.querySelector('[data-step="config"]').classList.contains('done')) {
+      document.querySelector('[data-step="user"]').classList.add('current');
+    }
+  });
+
+  // Update CTA button
+  fetch('/api/config').then(r => r.json()).then(d => {
+    const cta = document.getElementById('onboard-cta');
+    if (!d.has_key) {
+      cta.textContent = '配置 API →';
+      cta.onclick = () => {
+        closeOnboard();
+        document.getElementById('cfg-key').focus();
+      };
+    } else {
+      fetch('/api/db/summary').then(r => r.json()).then(d => {
+        if (!d.exists) {
+          cta.textContent = '录入简历 →';
+          cta.onclick = () => {
+            closeOnboard();
+            document.querySelector('.tab[data-tab="upload"]').click();
+          };
+        } else {
+          cta.textContent = '开始定制 →';
+          cta.onclick = () => {
+            closeOnboard();
+            document.querySelector('.tab[data-tab="generate"]').click();
+            document.getElementById('gen-jd').focus();
+          };
+        }
+      });
+    }
+  });
+}
+
+function onboardCTA() {
+  // Handled dynamically in updateOnboardSteps
+}
+
+// Show onboarding on first visit
+if (!localStorage.getItem('cv-onboard-done')) {
+  setTimeout(showOnboard, 1000);
+}
+
+// Also update the API config section to show warning status
+const origLoadConfig = loadConfig;
+loadConfig = async function() {
+  await origLoadConfig();
+  const r = await fetch('/api/config');
+  const d = await r.json();
+  const section = document.querySelector('.section:has(#cfg-key)').parentElement;
+  // Find the API section
+  const apiSection = document.getElementById('cfg-key').closest('.section');
+  if (apiSection) {
+    apiSection.classList.toggle('warn', !d.has_key);
+    apiSection.classList.toggle('ok', d.has_key);
+  }
+};
 
 // ─── Init ──────────────────────────────────────────────────
 loadConfig();
