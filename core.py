@@ -577,13 +577,25 @@ def import_resume(config: dict, file_path: str, user: str = "default") -> dict:
 def import_resume_stream(config: dict, file_path: str, user: str = "default"):
     """流式版本的简历导入，通过 SSE 推送进度，避免长请求超时。"""
     import json as _json
+    import sys as _sys
+
+    def _log(msg):
+        try:
+            with open(Path.home() / ".cv-assistant-debug.log", "a") as f:
+                f.write(f"[{datetime.now().isoformat()}] {msg}\n")
+        except Exception:
+            pass
+
+    _log(f"import_resume_stream start: {file_path}")
 
     fp = Path(file_path)
     if not fp.exists():
+        _log(f"file not found: {file_path}")
         yield f"data: {_json.dumps({'error': '文件不存在'})}\n\n"
         return
 
     ext = fp.suffix.lower()
+    _log(f"file ext: {ext}, size: {fp.stat().st_size}")
 
     # 阶段1: 提取文本
     yield f"data: {_json.dumps({'stage': 'extract', 'message': '正在读取文件...'})}\n\n"
@@ -592,15 +604,20 @@ def import_resume_stream(config: dict, file_path: str, user: str = "default"):
         if ext == ".txt":
             text = fp.read_text(encoding="utf-8")
         elif ext == ".pdf":
+            _log("importing pypdf...")
             from pypdf import PdfReader
+            _log("PdfReader imported, opening...")
             reader = PdfReader(str(fp))
+            _log(f"PDF opened, {len(reader.pages)} pages")
             pages_text = []
             for i, page in enumerate(reader.pages):
                 pages_text.append(page.extract_text() or "")
                 if i % 5 == 0:
                     yield f"data: {_json.dumps({'stage': 'extract', 'message': f'正在解析 PDF 第 {i+1} 页...'})}\n\n"
             text = "\n".join(pages_text)
+            _log(f"PDF text extracted, {len(text)} chars")
         elif ext in (".docx", ".doc"):
+            _log("importing docx...")
             from docx import Document
             doc = Document(str(fp))
             text = "\n".join(p.text for p in doc.paragraphs)
@@ -608,7 +625,13 @@ def import_resume_stream(config: dict, file_path: str, user: str = "default"):
             yield f"data: {_json.dumps({'error': f'不支持的文件格式: {ext}'})}\n\n"
             return
     except ImportError as e:
+        _log(f"ImportError: {e}")
         yield f"data: {_json.dumps({'error': f'缺少依赖库: {e}'})}\n\n"
+        return
+    except Exception as e:
+        _log(f"text extraction error: {e}")
+        import traceback as _tb
+        yield f"data: {_json.dumps({'error': f'文件解析失败: {e}', 'traceback': _tb.format_exc()})}\n\n"
         return
 
     if not text.strip():
@@ -650,6 +673,11 @@ def import_resume_stream(config: dict, file_path: str, user: str = "default"):
             full_result += token
             yield f"data: {_json.dumps({'stage': 'ai_token', 'token': token})}\n\n"
     except Exception as e:
+        _log(f"AI call error: {e}")
+        import traceback as _tb
+        yield f"data: {_json.dumps({'error': f'AI 调用失败: {e}', 'traceback': _tb.format_exc()})}\n\n"
+        return
+    except Exception as e:
         yield f"data: {_json.dumps({'error': f'AI 调用失败: {e}'})}\n\n"
         return
 
@@ -676,9 +704,13 @@ def import_resume_stream(config: dict, file_path: str, user: str = "default"):
         summary = db.summary() if db.exists() else {"name": data.get("personal", {}).get("name", "")}
         yield f"data: {_json.dumps({'stage': 'done', 'message': '简历解析完成！', 'summary': summary})}\n\n"
     except yaml.YAMLError as e:
-        yield f"data: {_json.dumps({'error': f'YAML 解析失败: {e}', 'raw': full_result})}\n\n"
+        _log(f"YAML error: {e}")
+        yield f"data: {_json.dumps({'error': f'YAML 解析失败: {e}', 'raw': full_result[:500]})}\n\n"
     except Exception as e:
-        yield f"data: {_json.dumps({'error': f'保存出错: {e}', 'raw': full_result})}\n\n"
+        _log(f"save error: {e}")
+        import traceback as _tb
+        yield f"data: {_json.dumps({'error': f'保存出错: {e}', 'traceback': _tb.format_exc(), 'raw': full_result[:500]})}\n\n"
+    _log("import_resume_stream done")
 
 
 # ═══════════════════════════════════════════════════════════════════
