@@ -572,41 +572,72 @@ function uploadFile(input) {
 
 async function doUpload(file) {
   const box = document.getElementById('upload-result');
-  const msg = document.getElementById('upload-msg');
   box.style.display = 'block';
   box.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;">
       <span style="font-size:20px;">⏳</span>
-      <span>正在解析简历... </span>
+      <span id="upload-status">正在读取文件...</span>
       <span class="timer" id="parse-timer">0.0s</span>
     </div>
     <div class="progress-bar"><div class="fill"></div></div>
-    <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">AI 正在提取结构信息，大文件可能需要 10-30 秒</p>
+    <pre id="upload-stream" style="font-size:10px;white-space:pre-wrap;max-height:80px;overflow-y:hidden;margin-top:8px;color:#999;display:none;"></pre>
   `;
+  const statusEl = document.getElementById('upload-status');
   const timerEl = document.getElementById('parse-timer');
+  const streamEl = document.getElementById('upload-stream');
   const start = Date.now();
   const timer = setInterval(() => { timerEl.textContent = ((Date.now() - start)/1000).toFixed(1) + 's'; }, 100);
 
   const fd = new FormData();
   fd.append('file', file);
-  let d;
-  try {
-    const r = await fetch('/api/upload', { method:'POST', body: fd });
-    d = await r.json();
-  } catch(e) {
-    d = { ok: false, message: '请求失败: ' + e.message };
-  }
-  clearInterval(timer);
-  const elapsed = ((Date.now() - start)/1000).toFixed(1);
 
-  box.innerHTML = '';
-  const strong = document.createElement('strong');
-  box.appendChild(strong);
-  if (d.ok || d.success) {
-    strong.innerHTML = '✅ ' + (d.message || '导入成功') + ' <span style="color:var(--text-muted);font-weight:normal;">(' + elapsed + 's)</span>';
-    refreshDB();
-  } else {
-    strong.innerHTML = '❌ ' + (d.message || '导入失败') + ' <span style="color:var(--text-muted);font-weight:normal;">(' + elapsed + 's)</span>';
+  try {
+    const r = await fetch('/api/upload/stream', { method: 'POST', body: fd });
+    if (!r.headers.get('content-type')?.includes('text/event-stream')) {
+      const d = await r.json();
+      throw new Error(d.message || '请求失败');
+    }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let aiText = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6));
+          if (data.stage === 'extract') {
+            statusEl.textContent = data.message;
+          } else if (data.stage === 'preprocess') {
+            statusEl.textContent = data.message;
+          } else if (data.stage === 'ai_start') {
+            statusEl.textContent = data.message;
+            streamEl.style.display = 'block';
+          } else if (data.stage === 'ai_token') {
+            aiText += data.token;
+            streamEl.textContent = aiText.slice(-500);
+          } else if (data.stage === 'saving') {
+            statusEl.textContent = data.message;
+          } else if (data.stage === 'done') {
+            clearInterval(timer);
+            box.innerHTML = '';
+            const strong = document.createElement('strong');
+            box.appendChild(strong);
+            const elapsed = ((Date.now() - start)/1000).toFixed(1);
+            strong.innerHTML = '✅ ' + data.message + ' <span style="color:var(--text-muted);font-weight:normal;">(' + elapsed + 's)</span>';
+            refreshDB();
+            return;
+          } else if (data.error) {
+            throw new Error(data.error);
+          }
+        }
+      }
+    }
+  } catch(e) {
+    clearInterval(timer);
+    const elapsed = ((Date.now() - start)/1000).toFixed(1);
+    box.innerHTML = '<strong>❌ ' + e.message + ' <span style="color:var(--text-muted);font-weight:normal;">(' + elapsed + 's)</span></strong>';
   }
 }
 

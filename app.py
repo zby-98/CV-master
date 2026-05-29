@@ -208,6 +208,41 @@ def api_upload():
     return jsonify(result)
 
 
+@app.route("/api/upload/stream", methods=["POST"])
+def api_upload_stream():
+    """SSE 流式上传，实时推送解析进度，避免超时。"""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "请先创建用户"})
+    if "file" not in request.files:
+        return jsonify({"ok": False, "message": "未选择文件"})
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"ok": False, "message": "文件名为空"})
+
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix)
+    file.save(tmp.name)
+    tmp.close()
+
+    cfg = load_config()
+    if not cfg["api_key"]:
+        os.unlink(tmp.name)
+        return jsonify({"ok": False, "message": "请先配置 API Key"})
+
+    from core import import_resume_stream
+
+    def generate():
+        try:
+            for event in import_resume_stream(cfg, tmp.name, user=u):
+                yield event
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        os.unlink(tmp.name)
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream")
+
+
 # ─── API: 对话 ────────────────────────────────────────────────────
 
 @app.route("/api/chat/history", methods=["GET"])

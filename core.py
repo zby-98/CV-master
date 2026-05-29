@@ -574,6 +574,113 @@ def import_resume(config: dict, file_path: str, user: str = "default") -> dict:
         return {"success": False, "message": f"合并数据出错: {e}", "raw": result}
 
 
+def import_resume_stream(config: dict, file_path: str, user: str = "default"):
+    """流式版本的简历导入，通过 SSE 推送进度，避免长请求超时。"""
+    import json as _json
+
+    fp = Path(file_path)
+    if not fp.exists():
+        yield f"data: {_json.dumps({'error': '文件不存在'})}\n\n"
+        return
+
+    ext = fp.suffix.lower()
+
+    # 阶段1: 提取文本
+    yield f"data: {_json.dumps({'stage': 'extract', 'message': '正在读取文件...'})}\n\n"
+    text = ""
+    try:
+        if ext == ".txt":
+            text = fp.read_text(encoding="utf-8")
+        elif ext == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(str(fp))
+            pages_text = []
+            for i, page in enumerate(reader.pages):
+                pages_text.append(page.extract_text() or "")
+                if i % 5 == 0:
+                    yield f"data: {_json.dumps({'stage': 'extract', 'message': f'正在解析 PDF 第 {i+1} 页...'})}\n\n"
+            text = "\n".join(pages_text)
+        elif ext in (".docx", ".doc"):
+            from docx import Document
+            doc = Document(str(fp))
+            text = "\n".join(p.text for p in doc.paragraphs)
+        else:
+            yield f"data: {_json.dumps({'error': f'不支持的文件格式: {ext}'})}\n\n"
+            return
+    except ImportError as e:
+        yield f"data: {_json.dumps({'error': f'缺少依赖库: {e}'})}\n\n"
+        return
+
+    if not text.strip():
+        yield f"data: {_json.dumps({'error': '未能从文件中提取到文本内容。'})}\n\n"
+        return
+
+    # 预处理
+    yield f"data: {_json.dumps({'stage': 'preprocess', 'message': '正在清洗文本...'})}\n\n"
+    cleaned_text = _preprocess_resume_text(text, ext)
+
+    # 阶段2: AI 解析（流式）
+    yield f"data: {_json.dumps({'stage': 'ai_start', 'message': 'AI 正在解析简历...'})}\n\n"
+
+    parse_prompt = textwrap.dedent("""\
+    你是一个简历解析专家。请将以下简历文本解析为 YAML 格式。
+    提取以下字段（尽可能完整，没有的信息写空或省略）：
+
+    personal:
+      name: 姓名 / email: 邮箱 / phone: 电话 / location: 城市
+    education:
+      - school: 学校 / degree: 学位 / major: 专业 / date: 时间 / highlights: [亮点]
+    work_experience:
+      - company: 公司 / role: 职位 / date: 时间 / location: 地点 / highlights: [描述, ...]
+    projects:
+      - name: 项目名 / role: 角色 / date: 时间 / tech_stack: 技术栈 / description: 简介 / highlights: [描述, ...]
+    skills:
+      programming_languages: [] / frameworks_and_tools: [] / domains: [] / languages: []
+
+    要求：
+    1. 输出纯 YAML，不要用 markdown 代码块包裹
+    2. highlights 中的每条描述保留原意，以动词开头
+    3. 不要编造任何原文没有的信息
+    """)
+
+    client = AIClient(config)
+    full_result = ""
+    try:
+        for token in client.chat_long_stream(parse_prompt, f"<RESUME_TEXT>\n{cleaned_text}\n</RESUME_TEXT>"):
+            full_result += token
+            yield f"data: {_json.dumps({'stage': 'ai_token', 'token': token})}\n\n"
+    except Exception as e:
+        yield f"data: {_json.dumps({'error': f'AI 调用失败: {e}'})}\n\n"
+        return
+
+    # 阶段3: 解析 & 保存
+    yield f"data: {_json.dumps({'stage': 'saving', 'message': '正在解析并保存...'})}\n\n"
+    yaml_text = _clean_code_fence(full_result, "yaml")
+
+    try:
+        data = yaml.safe_load(yaml_text)
+        if not isinstance(data, dict):
+            yield f"data: {_json.dumps({'error': 'AI 输出格式异常', 'raw': full_result})}\n\n"
+            return
+
+        db = ResumeDatabase(user)
+        if db.exists():
+            existing = yaml.safe_load(db.path.read_text(encoding="utf-8")) or {}
+            if not isinstance(existing, dict):
+                existing = {}
+            merged = _merge_data(existing, data)
+            db.save(merged)
+        else:
+            db.save(data)
+
+        summary = db.summary() if db.exists() else {"name": data.get("personal", {}).get("name", "")}
+        yield f"data: {_json.dumps({'stage': 'done', 'message': '简历解析完成！', 'summary': summary})}\n\n"
+    except yaml.YAMLError as e:
+        yield f"data: {_json.dumps({'error': f'YAML 解析失败: {e}', 'raw': full_result})}\n\n"
+    except Exception as e:
+        yield f"data: {_json.dumps({'error': f'保存出错: {e}', 'raw': full_result})}\n\n"
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 对话式录入
 # ═══════════════════════════════════════════════════════════════════
