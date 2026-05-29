@@ -381,8 +381,31 @@ def api_interview_prep_poll_start():
 
     from core import interview_prep_stream
 
-    task_id = _start_task(interview_prep_stream(cfg, jd_text, db.to_yaml_string()))
+    task_id = _start_task(interview_prep_stream(cfg, jd_text, db.to_yaml_string(), u))
     return jsonify({"ok": True, "task_id": task_id})
+
+
+@app.route("/api/interview-prep/history", methods=["GET"])
+def api_interview_prep_history():
+    u = current_user()
+    if not u:
+        return jsonify({"files": []})
+    from core import list_interview_prep_history
+    return jsonify({"files": list_interview_prep_history(u)})
+
+
+@app.route("/api/interview-prep/load", methods=["POST"])
+def api_interview_prep_load():
+    u = current_user()
+    data = request.json
+    name = data.get("name", "").strip()
+    if not u or not name:
+        return jsonify({"ok": False, "message": "缺少参数"})
+    from core import load_interview_prep
+    result = load_interview_prep(u, name)
+    if result:
+        return jsonify({"ok": True, "data": result.get("data", result)})
+    return jsonify({"ok": False, "message": "记录不存在"})
 
 
 # ─── API: 对话 ────────────────────────────────────────────────────

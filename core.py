@@ -760,9 +760,10 @@ def tailor_stream(config: dict, jd_text: str, db_yaml: str, user: str):
         yield f"data: {_json.dumps({'stage': 'done_but_compile_failed', 'message': msg, 'typst_code': typst_code, 'pdf_url': None, 'pdf_name': None})}\n\n"
 
 
-def interview_prep_stream(config: dict, jd_text: str, db_yaml: str):
-    """流式面试准备生成器——逐 token 推送 + 最终解析 JSON。"""
+def interview_prep_stream(config: dict, jd_text: str, db_yaml: str, user: str = "default"):
+    """流式面试准备生成器——逐 token 推送 + 最终解析 JSON + 保存历史。"""
     import json as _json
+    from datetime import datetime as _dt
 
     system_prompt = INTERVIEW_PREP_PROMPT.replace("{jd_text}", jd_text).replace("{master_yaml}", db_yaml)
 
@@ -783,9 +784,50 @@ def interview_prep_stream(config: dict, jd_text: str, db_yaml: str):
     try:
         cleaned = _clean_code_fence(full_result, "json")
         data_parsed = json.loads(cleaned)
+        # 保存历史记录
+        ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+        iv_dir = get_user_outputs(user) / "interviews"
+        iv_dir.mkdir(parents=True, exist_ok=True)
+        save_path = iv_dir / f"iv_{ts}.json"
+        save_path.write_text(_json.dumps({
+            "jd": jd_text[:500],
+            "data": data_parsed,
+            "created": _dt.now().isoformat(),
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
         yield f"data: {_json.dumps({'stage': 'done', 'message': '面试准备报告已生成！', 'data': data_parsed})}\n\n"
     except json.JSONDecodeError:
         yield f"data: {_json.dumps({'stage': 'done_raw', 'message': 'AI 返回格式异常，显示原始内容', 'raw': full_result})}\n\n"
+
+
+def list_interview_prep_history(user: str) -> list:
+    """列出用户的面试准备历史记录。"""
+    iv_dir = get_user_outputs(user) / "interviews"
+    if not iv_dir.is_dir():
+        return []
+    files = sorted(iv_dir.glob("iv_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    result = []
+    for p in files:
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+            result.append({
+                "name": p.name,
+                "jd_preview": (d.get("jd", "") or "")[:80],
+                "time": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+            })
+        except Exception:
+            pass
+    return result
+
+
+def load_interview_prep(user: str, name: str) -> dict | None:
+    """加载指定的面试准备历史记录。"""
+    p = get_user_outputs(user) / "interviews" / name
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════

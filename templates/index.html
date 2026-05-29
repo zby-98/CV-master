@@ -378,6 +378,8 @@
     </div>
 
     <button class="btn btn-primary" style="margin-top:16px;align-self:flex-start;" onclick="doGenerate()">🚀 AI 生成</button>
+    <button class="btn btn-outline btn-sm" id="gen-history-btn" style="margin-top:16px;margin-left:8px;display:none;" onclick="toggleGenHistory()">📂 历史记录</button>
+    <div id="gen-history-list" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:var(--radius);max-height:200px;overflow-y:auto;"></div>
 
     <!-- Result area -->
     <div class="result-box" id="gen-result">
@@ -385,9 +387,6 @@
         <strong id="gen-msg" style="min-width:0;"></strong>
         <span id="compile-status" class="compile-status"></span>
         <div style="flex:1;"></div>
-        <select id="history-select" onchange="loadFromHistory()" style="display:none;">
-          <option value="">📂 历史记录...</option>
-        </select>
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('typst-import').click()">📥 导入源码</button>
         <input type="file" id="typst-import" accept=".typ" style="display:none" onchange="importTypstFile(this)">
         <div id="gen-actions" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
@@ -415,6 +414,8 @@
       <div style="flex:1;display:flex;flex-direction:column;">
         <textarea id="iv-jd" placeholder="粘贴目标职位描述...（也可以从定制生成面板复制过来）" style="flex:1;min-height:180px;"></textarea>
         <button class="btn btn-primary" style="margin-top:12px;align-self:flex-start;" onclick="doInterviewPrep()">🔍 开始分析</button>
+        <button class="btn btn-outline btn-sm" id="iv-history-btn" style="margin-top:12px;margin-left:8px;display:none;" onclick="toggleIvHistory()">📂 历史记录</button>
+        <div id="iv-history-list" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:var(--radius);max-height:200px;overflow-y:auto;"></div>
       </div>
       <div class="result-box" id="iv-result" style="flex:1;overflow-y:auto;max-height:calc(100vh - 200px);">
         <div class="preview-placeholder">点击「开始分析」后，AI 将在右侧展示面试准备报告</div>
@@ -844,37 +845,48 @@ function updateGenActions(pdfUrl) {
 
 // ─── History ────────────────────────────────────────────────
 
+let _genHistoryFiles = [];
+
 async function refreshHistory() {
   const r = await fetch('/api/outputs');
   const d = await r.json();
-  const sel = document.getElementById('history-select');
+  const btn = document.getElementById('gen-history-btn');
   if (!d.files || d.files.length === 0) {
-    sel.style.display = 'none';
+    btn.style.display = 'none';
     return;
   }
-  sel.style.display = 'inline-block';
-  sel.innerHTML = '<option value="">📂 历史记录 (' + d.files.length + ')...</option>';
-  d.files.forEach(f => {
-    sel.innerHTML += `<option value="${f.name}">${f.name} (${f.time})</option>`;
-  });
+  _genHistoryFiles = d.files;
+  btn.style.display = 'inline-flex';
+  btn.textContent = '📂 历史记录 (' + d.files.length + ')';
 }
 
-async function loadFromHistory() {
-  const sel = document.getElementById('history-select');
-  const name = sel.value;
-  if (!name) return;
+function toggleGenHistory() {
+  const list = document.getElementById('gen-history-list');
+  if (list.style.display === 'block') {
+    list.style.display = 'none';
+    return;
+  }
+  list.style.display = 'block';
+  list.innerHTML = _genHistoryFiles.map(f =>
+    `<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;"
+          onclick="loadGenHistory('${f.name}')"
+          onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">
+       <span>📄 ${f.name}</span>
+       <span style="color:var(--text-muted);font-size:11px;">${f.time}</span>
+     </div>`
+  ).join('');
+}
 
+async function loadGenHistory(name) {
+  document.getElementById('gen-history-list').style.display = 'none';
   const r = await fetch('/api/outputs/source?name=' + encodeURIComponent(name));
   const d = await r.json();
   if (!d.ok) { toast(d.message, 'error'); return; }
 
-  // 恢复源码到编辑器
   currentTypstCode = d.content;
   document.getElementById('typst-editor').value = d.content;
   document.getElementById('gen-result').style.display = 'block';
   document.getElementById('typst-editor-area').style.display = 'flex';
-
-  // 触发编译
   doLiveCompile();
   toast('已加载: ' + name, 'success');
 }
@@ -1064,6 +1076,7 @@ async function doInterviewPrep() {
           } else if (data.stage === 'done') {
             clearInterval(timer);
             renderInterviewPrep(data.data);
+            refreshIvHistory();
             return;
           } else if (data.stage === 'done_raw') {
             clearInterval(timer);
@@ -1089,6 +1102,52 @@ async function doInterviewPrep() {
       resultBox.innerHTML += `<pre style="font-size:9px;white-space:pre-wrap;max-height:150px;overflow-y:auto;margin-top:6px;color:#999;">${escapeHtml(e.message.split('\n').slice(1).join('\n'))}</pre>`;
     }
   }
+}
+
+// ─── Interview Prep History ────────────────────────────────
+let _ivHistoryFiles = [];
+
+async function refreshIvHistory() {
+  const r = await fetch('/api/interview-prep/history');
+  const d = await r.json();
+  const btn = document.getElementById('iv-history-btn');
+  if (!d.files || d.files.length === 0) {
+    btn.style.display = 'none';
+    return;
+  }
+  _ivHistoryFiles = d.files;
+  btn.style.display = 'inline-flex';
+  btn.textContent = '📂 历史记录 (' + d.files.length + ')';
+}
+
+function toggleIvHistory() {
+  const list = document.getElementById('iv-history-list');
+  if (list.style.display === 'block') {
+    list.style.display = 'none';
+    return;
+  }
+  list.style.display = 'block';
+  list.innerHTML = _ivHistoryFiles.map(f =>
+    `<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;"
+          onclick="loadIvHistory('${f.name}')"
+          onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">
+       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;">📋 ${escapeHtml(f.jd_preview)}</span>
+       <span style="color:var(--text-muted);font-size:11px;">${f.time}</span>
+     </div>`
+  ).join('');
+}
+
+async function loadIvHistory(name) {
+  document.getElementById('iv-history-list').style.display = 'none';
+  const r = await fetch('/api/interview-prep/load', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name}),
+  });
+  const d = await r.json();
+  if (!d.ok) { toast(d.message, 'error'); return; }
+  renderInterviewPrep(d.data);
+  toast('已加载: ' + name, 'success');
 }
 
 function renderInterviewPrep(data) {
@@ -1438,6 +1497,7 @@ loadConfig();
 loadUsers();
 checkSystem();
 refreshHistory();
+refreshIvHistory();
 </script>
 </body>
 </html>
