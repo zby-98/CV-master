@@ -50,9 +50,18 @@ def _get_typst_cmd() -> str:
     """返回 typst 命令。打包后使用捆绑的二进制，开发模式使用系统 PATH 中的。"""
     if _is_frozen():
         exe = 'typst.exe' if sys.platform == 'win32' else 'typst'
-        bundled = Path(sys._MEIPASS) / exe
-        if bundled.exists():
-            return str(bundled)
+        # 按优先级查找：_MEIPASS → 可执行文件同目录 → PATH
+        candidates = [Path(sys._MEIPASS) / exe]
+        if sys.platform == 'darwin':
+            candidates.append(Path(sys.executable).parent / exe)
+        for cand in candidates:
+            if cand.exists():
+                # 确保可执行权限
+                try:
+                    os.chmod(cand, 0o755)
+                except OSError:
+                    pass
+                return str(cand)
     return 'typst'
 
 
@@ -390,6 +399,7 @@ class TypstCompiler:
         typst_path.write_text(typst_code, encoding="utf-8")
 
         typst_cmd = _get_typst_cmd()
+        _fix_bundled_binary(typst_cmd)
         if not _check_command(typst_cmd):
             return pdf_path, False, "Typst CLI 未安装。请运行: brew install typst"
 
@@ -415,6 +425,24 @@ def _check_command(cmd: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _fix_bundled_binary(cmd: str) -> bool:
+    """确保捆绑的二进制可执行。macOS 下载的 DMG 可能有 quarantine 标记。"""
+    if not _is_frozen() or sys.platform != 'darwin':
+        return True
+    p = Path(cmd)
+    try:
+        # 确保有可执行权限
+        os.chmod(p, 0o755)
+        # 尝试移除 quarantine 属性（忽略无 xattr 命令的错误）
+        subprocess.run(
+            ['xattr', '-d', 'com.apple.quarantine', str(p)],
+            capture_output=True,
+        )
+    except Exception:
+        pass
+    return True
 
 
 # ═══════════════════════════════════════════════════════════════════

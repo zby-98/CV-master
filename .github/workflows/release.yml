@@ -24,6 +24,9 @@ jobs:
           curl -sL "https://github.com/typst/typst/releases/download/v0.14.0/typst-aarch64-apple-darwin.tar.xz" -o typst.tar.xz
           tar xJf typst.tar.xz --strip-components=1 "typst-aarch64-apple-darwin/typst"
           chmod +x typst
+          # 移除 quarantine 标记并做 ad-hoc 签名，绕过 macOS Gatekeeper
+          xattr -cr typst 2>/dev/null || true
+          codesign --force --sign - typst 2>/dev/null || true
 
       - name: Install dependencies
         run: pip install flask openai pyyaml python-docx pyinstaller
